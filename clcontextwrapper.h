@@ -40,7 +40,7 @@ enum class KernelArgType
 {
     GLOBAL,
     LOCAL,
-    CONST
+    CONSTANT
 };
 
 struct KernelArg

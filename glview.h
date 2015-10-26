@@ -2,7 +2,10 @@
 
 #include <QGLWidget>
 
-class GLView : public QGLWidget
+#include <QOpenGLFunctions_3_3_Compatibility>
+
+
+class GLView : public QGLWidget, public QOpenGLFunctions_3_3_Compatibility
 {
 public:
     GLView();

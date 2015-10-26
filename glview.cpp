@@ -6,8 +6,13 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <QOpenGLFunctions_3_3_Core>
+
 
 #include <iostream>
+
+// glGetError is not get linked in windows... Don't know why
+//#define GET_OPENGL_ERRORS
 
 static QGLFormat getFormat()
 {
@@ -24,10 +29,12 @@ static QGLFormat getFormat()
 
 static void checkErrors(const std::string & snippet = "")
 {
+#if defined(GET_OPENGL_ERRORS)
     for(GLenum currError = glGetError(); currError != GL_NO_ERROR; currError = glGetError())
     {
         std::cout << "Error '" << snippet << "' " <<  currError << std::endl;
     }
+#endif
 }
 
 GLView::GLView() : QGLWidget(getFormat())
@@ -37,10 +44,11 @@ GLView::GLView() : QGLWidget(getFormat())
 
 void GLView::paintGL()
 {
+
     checkErrors("before draw");
     glClear(GL_COLOR_BUFFER_BIT);
 
-    glUseProgram(0);
+//    glUseProgram(0);
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
@@ -79,6 +87,9 @@ void GLView::paintGL()
 
 void GLView::initializeGL()
 {
+    // Initialize OpenGL Functions
+    initializeOpenGLFunctions();
+
     checkErrors("Before initializeGL");
     glClearColor(0.0f, 0.0f, 1.0f, 1.0f);
 

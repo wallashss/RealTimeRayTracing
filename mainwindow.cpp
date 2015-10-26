@@ -20,7 +20,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     GLView * glView = new GLView();
 
-
     QFile vertexFile(":/cl_files/raytracing.cl");
 
     if(!vertexFile.open(QIODevice::Text | QIODevice::ReadOnly))
@@ -35,6 +34,11 @@ MainWindow::MainWindow(QWidget *parent)
 
     CLContextWrapper context;
     context.createContext(DeviceType::GPU_DEVICE);
+
+    if(!context.hasCreatedContext())
+    {
+        return;
+    }
     context.createProgramFromSource(clSource.toStdString());
     context.prepareKernel("testKernel");
 

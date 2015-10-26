@@ -8,6 +8,9 @@
 #include <OpenCL/cl.h>
 #endif
 
+#if !defined(SAG_COM) && (defined(WIN64) || defined(_WIN64) || defined(__WIN64__))
+#include <CL/opencl.h>
+#endif
 
 static std::string getError(cl_int error);
 
@@ -84,6 +87,12 @@ static std::string getError(cl_int error)
         return "Invalid Kernel Arguments";
     case CL_INVALID_WORK_DIMENSION:
         return "Invalid Work Dimension";
+    case CL_INVALID_PLATFORM:
+        return "Invalid Platform";
+    case CL_DEVICE_NOT_FOUND:
+        return "Device not found";
+    case CL_INVALID_DEVICE_TYPE:
+        return "Invalide Device type";
     default:
     {
         std::stringstream ss;
@@ -131,14 +140,42 @@ bool CLContextWrapper::createContext(DeviceType deviceType)
         return false;
     }
 
+    cl_int err = CL_SUCCESS;
+
+    // Get Platform
+    cl_uint numPlatforms = 0;
+    err = clGetPlatformIDs(0, nullptr, &numPlatforms);
+    if(numPlatforms < 0)
+    {
+        return false;
+    }
+
+    cl_platform_id platform;
+    for(cl_uint i =0; i < numPlatforms ; i++)
+    {
+        cl_platform_id* platforms = new cl_platform_id[numPlatforms];
+        err = clGetPlatformIDs(numPlatforms, platforms, nullptr);
+        for (unsigned i = 0; i < numPlatforms; ++i)
+        {
+            char platformName[100];
+            err = clGetPlatformInfo(platforms[i],
+                                       CL_PLATFORM_VENDOR,
+                                       sizeof(platformName),
+                                       platformName,
+                                       nullptr);
+            std::cout << "Platform " << i << " : " << platformName << std::endl;
+            platform = platforms[i];
+        }
+    }
 
     // Get Device Info
-    cl_device_type  computeDeviceType= deviceType == DeviceType::GPU_DEVICE ? CL_DEVICE_TYPE_GPU : CL_DEVICE_TYPE_CPU; // for now, only these two types
+    cl_device_type  computeDeviceType = deviceType == DeviceType::GPU_DEVICE ? CL_DEVICE_TYPE_GPU : CL_DEVICE_TYPE_CPU; // for now, only these two types
     cl_device_id computeDeviceId;
-    auto err = clGetDeviceIDs(NULL, computeDeviceType, 1, &computeDeviceId, NULL);
+    err = clGetDeviceIDs(platform, computeDeviceType, 1, &computeDeviceId, NULL);
     if (err != CL_SUCCESS)
     {
         std::cout << "Error: Failed to locate a compute device!" << std::endl;
+        std::cout << getError(err) << std::endl;
         return false;
     }
 
@@ -205,7 +242,7 @@ bool CLContextWrapper::createProgramFromSource(const std::string & source)
     {
         std::cout << source << std::endl;
         std::cout << "Error: Failed to create compute program! " << std::endl;
-        return -1;
+        return false;
     }
 
     // Build the program executable
@@ -389,7 +426,7 @@ bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange ran
         bool allOk = true;
         for(decltype(args.size()) i = 0; i < args.size() ; i++)
         {
-            bool ok =_this->setKernelArg(kernel, args[i], i);
+            bool ok =_this->setKernelArg(kernel, args[i], static_cast<int>(i));
             if(!ok)
             {
                 std::cout << "Failed to setup arg for index " << i << std::endl;
