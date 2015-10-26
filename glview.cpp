@@ -29,6 +29,7 @@ static QGLFormat getFormat()
 
 static void checkErrors(const std::string & snippet = "")
 {
+    (void) snippet; // To supress the warning
 #if defined(GET_OPENGL_ERRORS)
     for(GLenum currError = glGetError(); currError != GL_NO_ERROR; currError = glGetError())
     {
@@ -44,11 +45,10 @@ GLView::GLView() : QGLWidget(getFormat())
 
 void GLView::paintGL()
 {
-
     checkErrors("before draw");
     glClear(GL_COLOR_BUFFER_BIT);
 
-//    glUseProgram(0);
+    glUseProgram(0);
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
@@ -57,31 +57,17 @@ void GLView::paintGL()
 
     glBindTexture(GL_TEXTURE_2D, _textureBuffer);
     glEnable(GL_TEXTURE_2D);
+
     glBegin(GL_QUADS);
-
-
     {
-        glColor3f(1.0f, 1.0f, 1.0f);
-//        glColor3f(1.0f, 0.0f, 0.0f);
-        glVertex3f(-0.5, 0.5f, 0);
-        glTexCoord2f(0, 1.0f);
-
-//        glColor3f(0.0f, 1.0f, 0.0f);
-        glVertex3f(0.5f, 0.5f, 0);
-        glTexCoord2f(1.0f, 1.0f);
-
-//        glColor3f(0.0f, 0.0f, 1.0f);
-        glVertex3f(0.5, -0.5f, 0.0f);
-        glTexCoord2f(1.0f, 0.0f);
-
-//        glColor3f(1.0f, 1.0f, 0.0f);
-        glVertex3f(-0.5f, -0.5f, 0);
-        glTexCoord2f(0.0f, 0.0f);
+       glTexCoord2f(0.0f, 1.0f); glVertex2f(-1.0f,  1.0f);
+       glTexCoord2f(0.0f, 0.0f); glVertex2f(-1.0f, -1.0f);
+       glTexCoord2f(1.0f, 0.0f); glVertex2f( 1.0f, -1.0f);
+       glTexCoord2f(1.0f, 1.0f); glVertex2f( 1.0f,  1.0f);
     }
-
     glEnd();
 
-
+    glDisable(GL_TEXTURE_2D);
     checkErrors("after draw");
 }
 
@@ -90,36 +76,45 @@ void GLView::initializeGL()
     // Initialize OpenGL Functions
     initializeOpenGLFunctions();
 
+    glViewport(0, 0, width(), height());
+
     checkErrors("Before initializeGL");
     glClearColor(0.0f, 0.0f, 1.0f, 1.0f);
 
     glGenTextures(1, &_textureBuffer);
 
+
+    // In windows, here width and height
     if(_textureBuffer)
     {
-        int totalBytes = width()*height()*3;
+        int w = 640;
+        int h = 480;
+
+        // Chess dummy texture
+        int totalBytes = w*h*3;
         unsigned char * dummyTexture = new unsigned char[totalBytes];
 
-        for(int i = 0 ; i < height() ; i++)
-        {
-            for(int j = 0 ; j < width(); j++)
-            {
-                int tilex = i / 32 ;
-                int tiley = j / 24 ;
 
-                int index = i* (width()*3) + (j*3);
+        for(int i = 0 ; i < h; i++)
+        {
+            for(int j = 0 ; j < w; j++)
+            {
+                int tilex = i / 40 ;
+                int tiley = j / 40 ;
+
+                int index = i* (w*3) + (j*3);
 
                 if((tilex % 2 == 0 && tiley % 2 == 0) || (tilex % 2 != 0 && tiley % 2 !=0))
                 {
-                    dummyTexture[index +0] = 255;
-                    dummyTexture[index +1] = 255;
-                    dummyTexture[index +2] = 255;
+                    dummyTexture[index +0] = 128;
+                    dummyTexture[index +1] = 128;
+                    dummyTexture[index +2] = 128;
                 }
                 else
                 {
                     dummyTexture[index +0] = 0;
                     dummyTexture[index +1] = 0;
-                    dummyTexture[index +2] = 0;
+                    dummyTexture[index +2] = 128;
                 }
             }
         }
@@ -127,7 +122,7 @@ void GLView::initializeGL()
         glBindTexture(GL_TEXTURE_2D, _textureBuffer);
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width(), height(), 0, GL_RGB, GL_UNSIGNED_BYTE, dummyTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, dummyTexture);
         delete [] dummyTexture;
     }
     else

@@ -25,23 +25,19 @@ HEADERS  += *.hpp
 
 macx
 {
-#LIBS += -framework OpenCL
+LIBS += -framework OpenCL
 }
 
 win32
 {
-
-AMD
+#AMD
 LIBS += $$_PRO_FILE_PWD_/AMD/lib_x86_64/libOpenCL.a
 INCLUDEPATH += $$_PRO_FILE_PWD_/AMD/include
-
 }
-
-
 
 macx
 {
-#QMAKE_MAC_SDK = macosx10.11
+QMAKE_MAC_SDK = macosx10.11
 }
 
 OTHER_FILES += \
