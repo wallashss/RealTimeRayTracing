@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/">
+        <file>cl_files/raytracing.cl</file>
+    </qresource>
+</RCC>
