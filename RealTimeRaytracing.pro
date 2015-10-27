@@ -43,9 +43,10 @@ INCLUDEPATH += $$_PRO_FILE_PWD_/AMD/include
 }
 
 
-
 OTHER_FILES += \
     cl_files/raytracing.cl
 
 RESOURCES += \
     kernels.qrc
+
+OTHER_FILES += README.md
