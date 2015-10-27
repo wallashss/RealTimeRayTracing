@@ -41,7 +41,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 
     CLContextWrapper context;
-    context.createContext(DeviceType::GPU_DEVICE);
+    context.createContext(DeviceType::CPU_DEVICE);
 
     if(!context.hasCreatedContext())
     {
@@ -59,7 +59,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     for(size_t i = 0 ; i < ITEMS_TO_TEST ;i++)
     {
-        a1[i] = i;
+        a1[i] = static_cast<int>(i);
     }
 
     auto id1 = context.createBuffer(sizeof(int)*ITEMS_TO_TEST, a1, BufferType::READ_AND_WRITE);
@@ -81,7 +81,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     context.dispatchKernel("testKernel", range, {arg1, arg2});
 
-    context.dowloadFromBuffer(id2, sizeof(int)*ITEMS_TO_TEST, a2);
+    context.dowloadArrayFromBuffer(id2, ITEMS_TO_TEST, a2);
 
     for(size_t i = 0 ; i < ITEMS_TO_TEST ;i++)
     {

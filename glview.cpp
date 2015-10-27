@@ -7,37 +7,22 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-
 #include <iostream>
-
-// glGetError is not get linked in windows... Don't know why
-//#define GET_OPENGL_ERRORS
-
-static void checkErrors(const std::string & snippet = "")
-{
-    (void) snippet; // To supress the warning
-#if defined(GET_OPENGL_ERRORS)
-    for(GLenum currError = glGetError(); currError != GL_NO_ERROR; currError = glGetError())
-    {
-        std::cout << "Error '" << snippet << "' " <<  currError << std::endl;
-    }
-#endif
-}
 
 GLView::GLView() : QOpenGLWidget()
 {
-    QSurfaceFormat glFormat;
-    glFormat.setVersion( 3, 3 );
-    glFormat.setProfile(QSurfaceFormat::OpenGLContextProfile::CompatibilityProfile);
-    glFormat.setSwapBehavior(QSurfaceFormat::SwapBehavior::SingleBuffer);
-    glFormat.setSwapInterval(0);
+//    QSurfaceFormat glFormat;
+//    glFormat.setVersion( 3, 3 );
+//    glFormat.setProfile(QSurfaceFormat::OpenGLContextProfile::CompatibilityProfile);
+//    glFormat.setSwapBehavior(QSurfaceFormat::SwapBehavior::SingleBuffer);
+//    glFormat.setSwapInterval(0);
 
-    setFormat(glFormat);
+//    setFormat(glFormat);
 }
 
 void GLView::paintGL()
 {
-    checkErrors("before draw");
+    _checkErrors("before draw");
     glClear(GL_COLOR_BUFFER_BIT);
 
     glUseProgram(0);
@@ -60,7 +45,7 @@ void GLView::paintGL()
     glEnd();
 
     glDisable(GL_TEXTURE_2D);
-    checkErrors("after draw");
+    _checkErrors("after draw");
 }
 
 void GLView::initializeGL()
@@ -68,9 +53,9 @@ void GLView::initializeGL()
     // Initialize OpenGL Functions
     initializeOpenGLFunctions();
 
-//    glViewport(0, 0, width(), height());
+    glViewport(0, 0, width(), height());
 
-    checkErrors("Before initializeGL");
+    _checkErrors("Before initializeGL");
     glClearColor(0.0f, 0.0f, 1.0f, 1.0f);
 
     glGenTextures(1, &_textureBuffer);
@@ -121,5 +106,13 @@ void GLView::initializeGL()
     {
         std::cout << "Error loading texture " << std::endl;
     }
-    checkErrors("After initializeGL");
+    _checkErrors("After initializeGL");
+}
+
+void GLView::_checkErrors(const std::string & snippet = "")
+{
+    for(GLenum currError = glGetError(); currError != GL_NO_ERROR; currError = glGetError())
+    {
+        std::cout << "Error '" << snippet << "' " <<  currError << std::endl;
+    }
 }
