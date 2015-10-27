@@ -366,6 +366,7 @@ bool CLContextWrapper::uploadToBuffer(BufferId id, size_t bytesSize, void * data
     return true;
 }
 
+
 bool CLContextWrapper::dowloadFromBuffer(BufferId id, size_t bytesSize, void * data, size_t offset , const bool blocking)
 {
     cl_int err = 0;

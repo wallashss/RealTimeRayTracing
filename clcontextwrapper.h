@@ -73,7 +73,19 @@ public:
 
     BufferId createBuffer(size_t bytesSize, void * hostData = nullptr, BufferType type = BufferType::READ_AND_WRITE);
 
+    template <typename T>
+    bool uploadArrayToBuffer(BufferId id, size_t count, T * data, size_t offset = 0,  const bool blocking = true)
+    {
+        return uploadToBuffer(id, sizeof(T) * count, data, offset, blocking);
+    }
+
     bool uploadToBuffer(BufferId id, size_t bytesSize, void * data, size_t offset = 0, const bool blocking = true);
+
+    template <typename T>
+    bool dowloadArrayFromBuffer(BufferId id, size_t count, T * data, size_t offset = 0, const bool blocking = true)
+    {
+        return dowloadFromBuffer(id, sizeof(T)* count, data, offset, blocking);
+    }
 
     bool dowloadFromBuffer(BufferId id, size_t bytesSize, void * data, size_t offset = 0, const bool blocking = true);
 
