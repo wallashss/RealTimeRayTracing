@@ -34,7 +34,6 @@ QMAKE_CXXFLAGS += -Wno-inconsistent-missing-override
 }
 
 win32 {
-message(Windows)
 
 #AMD
 LIBS += $$_PRO_FILE_PWD_/AMD/lib_x86_64/libOpenCL.a
