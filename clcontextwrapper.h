@@ -83,6 +83,8 @@ public:
 
     bool setKernelArg(const std::string & kernelName, KernelArg args, int index);
 
+    static std::vector<std::string> listAvailablePlatforms();
+
 private:
     CLContextWrapperPrivate * _this;
     bool _hasCreatedContext;

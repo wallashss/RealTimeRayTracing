@@ -4,6 +4,7 @@
 #
 #-------------------------------------------------
 
+#Requires Qt 5.4 or above.
 QT       += core opengl
 
 CONFIG += c++11
@@ -20,25 +21,28 @@ SOURCES += *.cpp
 HEADERS  += *.h
 HEADERS  += *.hpp
 
-#this script is useful to test build with mac os x
-#include(opencl_build.pri)
+macx {
 
-macx
-{
+#Must choose proper sdk
+QMAKE_MAC_SDK = macosx10.11
+
+#link to mac os framework
 LIBS += -framework OpenCL
+
+#Suppress CLANG warning
+QMAKE_CXXFLAGS += -Wno-inconsistent-missing-override
 }
 
-win32
-{
+win32 {
+message(Windows)
+
 #AMD
 LIBS += $$_PRO_FILE_PWD_/AMD/lib_x86_64/libOpenCL.a
 INCLUDEPATH += $$_PRO_FILE_PWD_/AMD/include
+
 }
 
-macx
-{
-QMAKE_MAC_SDK = macosx10.11
-}
+
 
 OTHER_FILES += \
     cl_files/raytracing.cl

@@ -1,11 +1,13 @@
 #pragma once
 
-#include <QGLWidget>
+#include <QOpenGLWidget>
 
 #include <QOpenGLFunctions_3_3_Compatibility>
 
+#include <QOpenGLFunctions>
 
-class GLView : public QGLWidget, public QOpenGLFunctions_3_3_Compatibility
+
+class GLView : public QOpenGLWidget , public QOpenGLFunctions
 {
 public:
     GLView();

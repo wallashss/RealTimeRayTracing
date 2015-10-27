@@ -6,26 +6,12 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <QOpenGLFunctions_3_3_Core>
 
 
 #include <iostream>
 
 // glGetError is not get linked in windows... Don't know why
 //#define GET_OPENGL_ERRORS
-
-static QGLFormat getFormat()
-{
-    QGLFormat glFormat;
-    glFormat.setVersion( 3, 3 );
-    glFormat.setProfile( QGLFormat::CompatibilityProfile );
-    glFormat.setSampleBuffers( false );
-    glFormat.setDoubleBuffer(false);
-    glFormat.setSwapInterval(0);
-
-    return glFormat;
-}
-
 
 static void checkErrors(const std::string & snippet = "")
 {
@@ -38,9 +24,15 @@ static void checkErrors(const std::string & snippet = "")
 #endif
 }
 
-GLView::GLView() : QGLWidget(getFormat())
+GLView::GLView() : QOpenGLWidget()
 {
+    QSurfaceFormat glFormat;
+    glFormat.setVersion( 3, 3 );
+    glFormat.setProfile(QSurfaceFormat::OpenGLContextProfile::CompatibilityProfile);
+    glFormat.setSwapBehavior(QSurfaceFormat::SwapBehavior::SingleBuffer);
+    glFormat.setSwapInterval(0);
 
+    setFormat(glFormat);
 }
 
 void GLView::paintGL()
@@ -76,7 +68,7 @@ void GLView::initializeGL()
     // Initialize OpenGL Functions
     initializeOpenGLFunctions();
 
-    glViewport(0, 0, width(), height());
+//    glViewport(0, 0, width(), height());
 
     checkErrors("Before initializeGL");
     glClearColor(0.0f, 0.0f, 1.0f, 1.0f);

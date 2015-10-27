@@ -145,27 +145,21 @@ bool CLContextWrapper::createContext(DeviceType deviceType)
     // Get Platform
     cl_uint numPlatforms = 0;
     err = clGetPlatformIDs(0, nullptr, &numPlatforms);
-    if(numPlatforms < 0)
+    if(numPlatforms == 0)
     {
         return false;
     }
 
+    // Get the first found platform
     cl_platform_id platform;
-    for(cl_uint i =0; i < numPlatforms ; i++)
+
+    err = clGetPlatformIDs(1, &platform, nullptr);
+
+    if(err)
     {
-        cl_platform_id* platforms = new cl_platform_id[numPlatforms];
-        err = clGetPlatformIDs(numPlatforms, platforms, nullptr);
-        for (unsigned i = 0; i < numPlatforms; ++i)
-        {
-            char platformName[100];
-            err = clGetPlatformInfo(platforms[i],
-                                       CL_PLATFORM_VENDOR,
-                                       sizeof(platformName),
-                                       platformName,
-                                       nullptr);
-            std::cout << "Platform " << i << " : " << platformName << std::endl;
-            platform = platforms[i];
-        }
+        std::cout << "Error: Failed get platorm id" << std::endl;
+        std::cout << getError(err);
+        return false;
     }
 
     // Get Device Info
@@ -393,7 +387,7 @@ bool CLContextWrapper::dowloadFromBuffer(BufferId id, size_t bytesSize, void * d
 
     if(err)
     {
-        std::cout << "Error: Failed to upload data to buffer" << std::endl;
+        std::cout << "Error: Failed to download data from buffer" << std::endl;
         std::cout << getError(err) << std::endl;
         return false;
     }
@@ -468,4 +462,35 @@ bool CLContextWrapper::setKernelArg(const std::string & kernelName, KernelArg ar
     }
 
     return _this->setKernelArg(it->second.kernel, arg, index);
+}
+
+std::vector<std::string> CLContextWrapper::listAvailablePlatforms()
+{
+    cl_int err = 0;
+    cl_uint numPlatforms = 0;
+    err = clGetPlatformIDs(0, nullptr, &numPlatforms);
+
+    if(numPlatforms ==0)
+    {
+        return std::vector<std::string>();
+    }
+
+    std::vector<std::string> platformList;
+    for(cl_uint i =0; i < numPlatforms ; i++)
+    {
+        cl_platform_id* platforms = new cl_platform_id[numPlatforms];
+        err = clGetPlatformIDs(numPlatforms, platforms, nullptr);
+        for (unsigned i = 0; i < numPlatforms; ++i)
+        {
+            char platformName[100];
+            err = clGetPlatformInfo(platforms[i],
+                                       CL_PLATFORM_VENDOR,
+                                       sizeof(platformName),
+                                       platformName,
+                                       nullptr);
+            platformList.push_back(platformName);
+        }
+    }
+    return platformList;
+
 }
