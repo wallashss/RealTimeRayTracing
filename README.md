@@ -13,5 +13,7 @@ For now, It has some boilerplate codes, few (not automated) tests and ground bas
 Summary of technologies:
 
 -GLM. Library for common computer graphics math.
+
 -Qt 5.4. Qt Framework, the makefile should be generated with qmake, and we need its GUI library.
+
 -OpenCL 1.x. Multiplatform parallel computations.
