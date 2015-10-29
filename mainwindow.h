@@ -2,6 +2,8 @@
 
 #include <QMainWindow>
 
+#include <clcontextwrapper.h>
+
 class MainWindow : public QWidget
 {
     Q_OBJECT
@@ -13,4 +15,5 @@ public:
 
 private:
     void _testOpenCL();
+//     CLContextWrapper *clContext;
 };

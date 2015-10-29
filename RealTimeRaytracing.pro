@@ -33,13 +33,7 @@ LIBS += -framework OpenCL
 QMAKE_CXXFLAGS += -Wno-inconsistent-missing-override
 }
 
-win32 {
 
-#AMD
-LIBS += $$_PRO_FILE_PWD_/AMD/lib_x86_64/libOpenCL.a
-INCLUDEPATH += $$_PRO_FILE_PWD_/AMD/include
-
-}
 
 
 OTHER_FILES += \
@@ -49,3 +43,16 @@ RESOURCES += \
     kernels.qrc
 
 OTHER_FILES += README.md
+
+win32 {
+
+LIBS += -lopengl32
+
+#AMD
+LIBS += $$_PRO_FILE_PWD_/AMD/lib_x86_64/libOpenCL.a
+#LIBS += $$_PRO_FILE_PWD_/AMD/lib_x86_64/libglut64.a
+#LIBS += $$_PRO_FILE_PWD_/AMD/lib_x86_64/libglew64.dll.a
+#LIBS += $$_PRO_FILE_PWD_/AMD/lib_x86_64/libOpenCL.a
+INCLUDEPATH += $$_PRO_FILE_PWD_/AMD/include
+
+}

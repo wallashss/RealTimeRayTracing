@@ -16,6 +16,20 @@
 
 #if !defined(SAG_COM) && (defined(WIN64) || defined(_WIN64) || defined(__WIN64__))
 #include <CL/opencl.h>
+#include <CL/cl_ext.h>
+#include <CL/cl_gl_ext.h>
+#include <Windows.h>
+#include <gl/GL.h>
+
+typedef CL_API_ENTRY cl_int (CL_API_CALL *clGetGLContextInfoKHR_fn)(
+    const cl_context_properties *properties,
+    cl_gl_context_info param_name,
+    size_t param_value_size,
+    void *param_value,
+    size_t *param_value_size_ret);
+
+#define clGetGLContextInfoKHR clGetGLContextInfoKHR_proc
+static clGetGLContextInfoKHR_fn clGetGLContextInfoKHR;
 #endif
 
 static std::string getError(cl_int error);
@@ -49,10 +63,7 @@ struct CLContextWrapperPrivate
         case KernelArgType::OPENGL:
             argSize = sizeof(cl_mem);
             data = &buffers.at(*static_cast<BufferId*>(arg.data));
-
             break;
-//            argSize = 0;
-//            data = &buffers.at(*static_cast<BufferId*>(arg.data));
         default:
             argSize = arg.byteSize;
             break;
@@ -104,7 +115,7 @@ static std::string getError(cl_int error)
     case CL_DEVICE_NOT_FOUND:
         return "Device not found";
     case CL_INVALID_DEVICE_TYPE:
-        return "Invalide Device type";
+        return "Invalid Device type";
     case CL_INVALID_WORK_GROUP_SIZE:
         return "Invalid work group size";
     case CL_INVALID_WORK_ITEM_SIZE:
@@ -119,10 +130,12 @@ static std::string getError(cl_int error)
         return "Invalid OpenGL Object";
     case CL_INVALID_MEM_OBJECT:
         return "Invalid Mem Object. (Invalid Buffer)";
+    case CL_INVALID_IMAGE_FORMAT_DESCRIPTOR:
+        return "Invalid Image Format Descriptor";
     default:
     {
         std::stringstream ss;
-        ss << "Erro number :" << std::to_string(error);
+        ss << "Erro number : " << std::to_string(error);
         return  ss.str();
     }
     }
@@ -141,6 +154,7 @@ static inline cl_mem_flags getMemFlags(BufferType type)
         return CL_MEM_READ_WRITE;
         break;
     default:
+        return CL_MEM_READ_WRITE;
         break;
     }
 }
@@ -210,7 +224,7 @@ bool CLContextWrapper::createContext(DeviceType deviceType)
     }
 
     // Get Device Info
-    cl_device_type  computeDeviceType = deviceType == DeviceType::GPU_DEVICE ? CL_DEVICE_TYPE_GPU : CL_DEVICE_TYPE_CPU; // for now, only these two types
+    cl_device_type computeDeviceType = deviceType == DeviceType::GPU_DEVICE ? CL_DEVICE_TYPE_GPU : CL_DEVICE_TYPE_CPU; // for now, only these two types
     cl_device_id computeDeviceId;
     err = clGetDeviceIDs(platform, computeDeviceType, 1, &computeDeviceId, NULL);
     if (err != CL_SUCCESS)
@@ -241,7 +255,7 @@ bool CLContextWrapper::createContext(DeviceType deviceType)
     std::cout << "Connecting to " <<  vendorName << " - " << deviceName << "..." << std::endl;
 
     // Create Context
-    _this->context = clCreateContext(0, 1, &computeDeviceId, NULL, NULL, &err);
+    cl_context context = clCreateContext(0, 1, &computeDeviceId, NULL, NULL, &err);
     if (!_this->context || err)
     {
         logError("Error: Failed to create a compute ComputeContext!", getError(err));
@@ -249,7 +263,7 @@ bool CLContextWrapper::createContext(DeviceType deviceType)
     }
 
     // Create Command Queue
-    _this->commandQueue = clCreateCommandQueue(_this->context, computeDeviceId, 0, &err);
+    cl_command_queue commandQueue = clCreateCommandQueue(context, computeDeviceId, 0, &err);
     if (!_this->commandQueue)
     {
         logError("Error: Failed to create a command ComputeCommands!", getError(err));
@@ -258,7 +272,10 @@ bool CLContextWrapper::createContext(DeviceType deviceType)
 
 
     _this->deviceId = computeDeviceId;
-    std::cout << "Successfully created context " << std::endl;
+    _this->context = context;
+    _this->commandQueue = commandQueue;
+
+    std::cout << "Successfully created OpenCL context " << std::endl;
 
     _hasCreatedContext = true;
     _deviceType = deviceType;
@@ -268,7 +285,7 @@ bool CLContextWrapper::createContext(DeviceType deviceType)
 
 #if __APPLE__
 
-bool CLContextWrapper::createContextWithOpengl(void * /*windId*/)
+bool CLContextWrapper::createContextWithOpengl()
 {
 
     cl_platform_id platform;
@@ -325,9 +342,80 @@ bool CLContextWrapper::createContextWithOpengl(void * /*windId*/)
 }
 
 #else
-bool CLContextWrapper::createContextWithOpengl(void * /*windId*/)
+bool CLContextWrapper::createContextWithOpengl()
 {
-    // TODO
+    cl_platform_id platform;
+
+    cl_int err = clGetPlatformIDs(1, &platform, nullptr);
+
+    if(err)
+    {
+        logError("Error: Failed get platorm id" , getError(err));
+        return false;
+    }
+
+    // Create CL context properties, add handle & share-group enum
+    auto glContext = wglGetCurrentContext();
+    auto glDc = wglGetCurrentDC();
+
+    cl_context_properties properties[] = {
+        CL_GL_CONTEXT_KHR,  (cl_context_properties) glContext,
+        CL_WGL_HDC_KHR,     (cl_context_properties) glDc,
+        CL_CONTEXT_PLATFORM,(cl_context_properties) platform,
+        0
+    };
+
+    // Get Device Info
+    // The easy way
+    cl_device_id computeDeviceId;
+    err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &computeDeviceId, NULL);
+    if (err)
+    {
+        // The "hard" way
+        if (!clGetGLContextInfoKHR)
+        {
+            clGetGLContextInfoKHR = (clGetGLContextInfoKHR_fn)
+                                  clGetExtensionFunctionAddressForPlatform(platform, "clGetGLContextInfoKHR");
+            if (!clGetGLContextInfoKHR)
+            {
+                logError("Error: Failed to locate a compute device!" , "Failed to query proc address for clGetGLContextInfoKHR");
+                return false;
+            }
+
+            // Get the first
+            err = clGetGLContextInfoKHR(properties, CL_DEVICES_FOR_GL_CONTEXT_KHR, sizeof(cl_device_id), &computeDeviceId, nullptr);
+
+            if(!computeDeviceId)
+            {
+                logError("Error: Failed to locate a compute device!" , getError(err));
+            }
+        }
+    }
+
+    // Create a context with device in the CGL share group
+    cl_context context = clCreateContext(properties, 1, &computeDeviceId, nullptr, 0, &err);
+
+    if(err)
+    {
+        logError("Error creating OpenCL shared with with shared Opengl", getError(err));
+        return false;
+    }
+
+    // Create Command Queue
+    auto commandQueue = clCreateCommandQueue(context, computeDeviceId, 0, &err);
+    if (!commandQueue)
+    {
+        logError("Error: Failed to create a command ComputeCommands with shared Opengl!", getError(err));
+        return false;
+    }
+
+    _this->deviceId = computeDeviceId;
+    _this->context = context;
+    _this->commandQueue = commandQueue;
+
+    _hasCreatedContext = true;
+    _deviceType = DeviceType::GPU_DEVICE;
+    return true;
     return false;
 }
 
@@ -404,7 +492,7 @@ bool CLContextWrapper::prepareKernel(const std::string & kernelName)
 
     _this->kernels[kernelName] = info;
 
-    std::cout << "Succesfully prepared kernel" << std::endl;
+    std::cout << "Succesfully prepared kernel '" << kernelName << "'" << std::endl;
 
     return true;
 }
@@ -472,7 +560,7 @@ bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange ran
         return false;
     }
 
-    std::cout << "Successfully dispatched kernel" << std::endl;
+    std::cout << "Successfully dispatched kernel \"" << kernelName <<"\"" << std::endl;
     return true;
 }
 
@@ -571,7 +659,6 @@ bool CLContextWrapper::dowloadFromBuffer(BufferId id, size_t bytesSize, void * d
 
 BufferId CLContextWrapper::shareGLTexture(const GLTextureId textureId, BufferType type)
 {
-
     auto flags = getMemFlags(type);
 
     cl_int err = 0;
@@ -592,7 +679,7 @@ BufferId CLContextWrapper::shareGLTexture(const GLTextureId textureId, BufferTyp
 
 }
 
-void CLContextWrapper::executeSafeAndSyncronized(BufferId * textureToLock, size_t count, std::function<void()> exec)
+void CLContextWrapper::executeSafeAndSyncronized(BufferId * textureToLock, unsigned int count, std::function<void()> exec)
 {
     cl_mem * objs = new cl_mem[count];
 
@@ -606,6 +693,8 @@ void CLContextWrapper::executeSafeAndSyncronized(BufferId * textureToLock, size_
     exec();
 
     clEnqueueReleaseGLObjects(_this->commandQueue, count, objs, 0, nullptr, nullptr);
+
+    clFinish(_this->commandQueue);
     delete [] objs;
 }
 

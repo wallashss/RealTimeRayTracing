@@ -88,7 +88,7 @@ public:
 
     bool createContext(DeviceType deviceType = DeviceType::CPU_DEVICE);
 
-    bool createContextWithOpengl(void * windId);
+    bool createContextWithOpengl();
 
     // Context status
 
@@ -134,7 +134,7 @@ public:
 
     BufferId shareGLTexture(const GLTextureId id, BufferType type);
 
-    void executeSafeAndSyncronized(BufferId * textureToLock, size_t count, std::function<void()> exec);
+    void executeSafeAndSyncronized(BufferId * textureToLock, unsigned int count, std::function<void()> exec);
 
     // Static util
     static std::vector<std::string> listAvailablePlatforms();

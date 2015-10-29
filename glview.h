@@ -30,8 +30,6 @@ protected:
 
     void initializeGL();
 
-
-
 private:
     void _checkErrors(const std::string & snippet);
 
