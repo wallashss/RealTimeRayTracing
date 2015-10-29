@@ -1,6 +1,7 @@
 #pragma once
 
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -10,7 +11,8 @@ struct CLContextWrapperPrivate;
 enum class DeviceType
 {
     GPU_DEVICE,
-    CPU_DEVICE
+    CPU_DEVICE,
+    NONE
 };
 
 enum class BufferType
@@ -36,10 +38,31 @@ struct NDRange
     }
 };
 
+enum class TextureWrapMode
+{
+    CLAMP,
+    REPEAT
+};
+
+enum class TextureFilterMode
+{
+    LINEAR,
+    NEAREST
+};
+
+
+struct TextureParams
+{
+    TextureWrapMode wrapMode;
+    TextureFilterMode filterMode;
+
+};
+
 enum class KernelArgType
 {
     GLOBAL,
     LOCAL,
+    OPENGL,
     CONSTANT
 };
 
@@ -52,7 +75,7 @@ struct KernelArg
 };
 
 typedef unsigned int BufferId;
-
+typedef unsigned int GLTextureId;
 
 class CLContextWrapper
 {
@@ -61,15 +84,33 @@ public:
 
     ~CLContextWrapper();
 
+    // Context Creation
+
     bool createContext(DeviceType deviceType = DeviceType::CPU_DEVICE);
 
+    bool createContextWithOpengl(void * windId);
+
+    // Context status
+
     bool hasCreatedContext() const;
+
+    DeviceType getContextDeviceType() const;
+
+    // Kernel
 
     bool createProgramFromSource(const std::string & source);
 
     bool prepareKernel(const std::string & kernelName);
 
     size_t getWorkGroupSize(const std::string & kernelName) const;
+
+    bool dispatchKernel(const std::string& kernelName, NDRange range);
+
+    bool dispatchKernel(const std::string& kernelName, NDRange range, const std::vector<KernelArg>& args);
+
+    bool setKernelArg(const std::string & kernelName, KernelArg args, int index);
+
+    // OpenCL Buffers
 
     BufferId createBuffer(size_t bytesSize, void * hostData = nullptr, BufferType type = BufferType::READ_AND_WRITE);
 
@@ -89,18 +130,19 @@ public:
 
     bool dowloadFromBuffer(BufferId id, size_t bytesSize, void * data, size_t offset = 0, const bool blocking = true);
 
-    bool dispatchKernel(const std::string& kernelName, NDRange range);
+    // OpenGL
 
-    bool dispatchKernel(const std::string& kernelName, NDRange range, const std::vector<KernelArg>& args);
+    BufferId shareGLTexture(const GLTextureId id, BufferType type);
 
-    bool setKernelArg(const std::string & kernelName, KernelArg args, int index);
+    void executeSafeAndSyncronized(BufferId * textureToLock, size_t count, std::function<void()> exec);
 
+    // Static util
     static std::vector<std::string> listAvailablePlatforms();
 
 private:
     CLContextWrapperPrivate * _this;
     bool _hasCreatedContext;
-
+    DeviceType _deviceType;
 
 };
 

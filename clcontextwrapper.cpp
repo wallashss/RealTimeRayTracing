@@ -6,6 +6,12 @@
 
 #if __APPLE__
 #include <OpenCL/cl.h>
+#include <OpenCL/cl_ext.h>
+#include <OpenCL/gcl.h>
+#include <OpenGL/OpenGL.h>
+#include <OpenGL/gl.h>
+#include <OpenGL/CGLContext.h>
+#include <OpenGL/CGLCurrent.h>
 #endif
 
 #if !defined(SAG_COM) && (defined(WIN64) || defined(_WIN64) || defined(__WIN64__))
@@ -13,6 +19,7 @@
 #endif
 
 static std::string getError(cl_int error);
+static inline void logError(const std::string & error, const std::string & errorDetail );
 
 struct KernelInfo
 {
@@ -22,8 +29,8 @@ struct KernelInfo
 
 struct CLContextWrapperPrivate
 {
-    cl_context          computeContext;
-    cl_command_queue    computeCommands;
+    cl_context          context;
+    cl_command_queue    commandQueue;
     cl_device_id        deviceId;
     cl_program          computeProgram;
 
@@ -35,14 +42,20 @@ struct CLContextWrapperPrivate
     {
         size_t argSize = 0;
         void * data = arg.data;
-        if(arg.type == KernelArgType::GLOBAL)
+
+        switch(arg.type)
         {
+        case KernelArgType::GLOBAL:
+        case KernelArgType::OPENGL:
             argSize = sizeof(cl_mem);
             data = &buffers.at(*static_cast<BufferId*>(arg.data));
-        }
-        else
-        {
+
+            break;
+//            argSize = 0;
+//            data = &buffers.at(*static_cast<BufferId*>(arg.data));
+        default:
             argSize = arg.byteSize;
+            break;
         }
 
         cl_uint uindex = static_cast<cl_uint>(index);
@@ -51,8 +64,7 @@ struct CLContextWrapperPrivate
 
         if(err)
         {
-            std::cout << "Error: Failed to set kernel arg!" << std::endl;
-            std::cout << getError(err);
+            logError("Error: Failed to set kernel arg!", getError(err));
             return false;
         }
         return true;
@@ -93,6 +105,20 @@ static std::string getError(cl_int error)
         return "Device not found";
     case CL_INVALID_DEVICE_TYPE:
         return "Invalide Device type";
+    case CL_INVALID_WORK_GROUP_SIZE:
+        return "Invalid work group size";
+    case CL_INVALID_WORK_ITEM_SIZE:
+        return "Invalid work item size";
+    case CL_INVALID_GLOBAL_OFFSET:
+        return "Invalid Global Offset";
+    case CL_INVALID_EVENT_WAIT_LIST:
+        return "Invalid Event Wait List";
+    case CL_INVALID_GLOBAL_WORK_SIZE:
+        return "Invalid Global Work Size";
+    case CL_INVALID_GL_OBJECT:
+        return "Invalid OpenGL Object";
+    case CL_INVALID_MEM_OBJECT:
+        return "Invalid Mem Object. (Invalid Buffer)";
     default:
     {
         std::stringstream ss;
@@ -102,7 +128,30 @@ static std::string getError(cl_int error)
     }
 }
 
-CLContextWrapper::CLContextWrapper() : _hasCreatedContext(false)
+static inline cl_mem_flags getMemFlags(BufferType type)
+{
+    switch (type) {
+    case BufferType::READ_ONLY:
+        return CL_MEM_READ_ONLY;
+        break;
+    case BufferType::WRITE_ONLY:
+        return CL_MEM_WRITE_ONLY;
+        break;
+    case BufferType::READ_AND_WRITE:
+        return CL_MEM_READ_WRITE;
+        break;
+    default:
+        break;
+    }
+}
+
+static inline void logError(const std::string & error, const std::string & errorDetail = "")
+{
+    std::cout << error << std::endl;
+    std::cout << errorDetail << std::endl;
+}
+
+CLContextWrapper::CLContextWrapper() : _hasCreatedContext(false), _deviceType(DeviceType::NONE)
 {
     _this = new CLContextWrapperPrivate;
     _this->nextBufferId = 1;
@@ -110,7 +159,6 @@ CLContextWrapper::CLContextWrapper() : _hasCreatedContext(false)
 
 CLContextWrapper::~CLContextWrapper()
 {
-
     for(auto it : _this->kernels)
     {
         clReleaseKernel(it.second.kernel);
@@ -120,13 +168,13 @@ CLContextWrapper::~CLContextWrapper()
         clReleaseMemObject(it.second);
     }
 
-    if(_this->computeCommands)
+    if(_this->commandQueue)
     {
-        clReleaseCommandQueue(_this->computeCommands);
+        clReleaseCommandQueue(_this->commandQueue);
     }
-    if(_this->computeContext)
+    if(_this->context)
     {
-        clReleaseContext(_this->computeContext);
+        clReleaseContext(_this->context);
     }
 
     delete _this;
@@ -157,8 +205,7 @@ bool CLContextWrapper::createContext(DeviceType deviceType)
 
     if(err)
     {
-        std::cout << "Error: Failed get platorm id" << std::endl;
-        std::cout << getError(err);
+        logError("Error: Failed get platorm id" , getError(err));
         return false;
     }
 
@@ -168,8 +215,7 @@ bool CLContextWrapper::createContext(DeviceType deviceType)
     err = clGetDeviceIDs(platform, computeDeviceType, 1, &computeDeviceId, NULL);
     if (err != CL_SUCCESS)
     {
-        std::cout << "Error: Failed to locate a compute device!" << std::endl;
-        std::cout << getError(err) << std::endl;
+        logError("Error: Failed to locate a compute device!" , getError(err));
         return false;
     }
 
@@ -178,7 +224,7 @@ bool CLContextWrapper::createContext(DeviceType deviceType)
     err = clGetDeviceInfo(computeDeviceId, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &max_workgroup_size, &returned_size);
     if (err != CL_SUCCESS)
     {
-        std::cout << "Error: Failed to retrieve device info!" << std::endl;
+        logError("Error: Failed to retrieve device info!", getError(err));
         return false;
     }
 
@@ -188,25 +234,25 @@ bool CLContextWrapper::createContext(DeviceType deviceType)
     err|= clGetDeviceInfo(computeDeviceId, CL_DEVICE_NAME, sizeof(deviceName), deviceName, &returned_size);
     if (err != CL_SUCCESS)
     {
-        std::cout << "Error: Failed to retrieve device info!" << std::endl;
+        logError("Error: Failed to retrieve device info!", getError(err));
         return false;
     }
 
     std::cout << "Connecting to " <<  vendorName << " - " << deviceName << "..." << std::endl;
 
     // Create Context
-    _this->computeContext = clCreateContext(0, 1, &computeDeviceId, NULL, NULL, &err);
-    if (!_this->computeContext)
+    _this->context = clCreateContext(0, 1, &computeDeviceId, NULL, NULL, &err);
+    if (!_this->context || err)
     {
-        printf("Error: Failed to create a compute ComputeContext!\n");
+        logError("Error: Failed to create a compute ComputeContext!", getError(err));
         return false;
     }
 
     // Create Command Queue
-    _this->computeCommands = clCreateCommandQueue(_this->computeContext, computeDeviceId, 0, &err);
-    if (!_this->computeCommands)
+    _this->commandQueue = clCreateCommandQueue(_this->context, computeDeviceId, 0, &err);
+    if (!_this->commandQueue)
     {
-        printf("Error: Failed to create a command ComputeCommands!\n");
+        logError("Error: Failed to create a command ComputeCommands!", getError(err));
         return false;
     }
 
@@ -215,13 +261,86 @@ bool CLContextWrapper::createContext(DeviceType deviceType)
     std::cout << "Successfully created context " << std::endl;
 
     _hasCreatedContext = true;
+    _deviceType = deviceType;
 
     return true;
 }
 
+#if __APPLE__
+
+bool CLContextWrapper::createContextWithOpengl(void * /*windId*/)
+{
+
+    cl_platform_id platform;
+
+    cl_int err = clGetPlatformIDs(1, &platform, nullptr);
+
+    if(err)
+    {
+        logError("Error: Failed get platorm id" , getError(err));
+        return false;
+    }
+
+    // Get Device Info
+    cl_device_id computeDeviceId;
+    err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &computeDeviceId, NULL);
+    if (err != CL_SUCCESS)
+    {
+        logError("Error: Failed to locate a compute device!" , getError(err));
+        return false;
+    }
+
+    CGLContextObj kCGLContext = CGLGetCurrentContext();
+    CGLShareGroupObj kCGLShareGroup = CGLGetShareGroup(kCGLContext);
+
+    // Create CL context properties, add handle & share-group enum
+    cl_context_properties properties[] = {
+        CL_CONTEXT_PROPERTY_USE_CGL_SHAREGROUP_APPLE, (cl_context_properties)kCGLShareGroup, 0
+    };
+     // Create a context with device in the CGL share group
+
+    cl_context context = clCreateContext(properties, 0, &computeDeviceId, nullptr, 0, &err);
+
+    if(err)
+    {
+        logError("Error creating OpenCL shared with with shared Opengl", getError(err));
+        return false;
+    }
+
+    // Create Command Queue
+    auto commandQueue = clCreateCommandQueue(context, computeDeviceId, 0, &err);
+    if (!commandQueue)
+    {
+        logError("Error: Failed to create a command ComputeCommands with shared Opengl!", getError(err));
+        return false;
+    }
+
+    _this->context = context;
+    _this->deviceId = computeDeviceId;
+    _this->commandQueue = commandQueue;
+
+    _hasCreatedContext = true;
+    _deviceType = DeviceType::GPU_DEVICE;
+    return true;
+}
+
+#else
+bool CLContextWrapper::createContextWithOpengl(void * /*windId*/)
+{
+    // TODO
+    return false;
+}
+
+#endif
+
 bool CLContextWrapper::hasCreatedContext() const
 {
     return _hasCreatedContext;
+}
+
+DeviceType CLContextWrapper::getContextDeviceType() const
+{
+    return _deviceType;
 }
 
 bool CLContextWrapper::createProgramFromSource(const std::string & source)
@@ -231,7 +350,7 @@ bool CLContextWrapper::createProgramFromSource(const std::string & source)
     // Create program
     const char * sourcePtr = source.c_str();
 
-    _this->computeProgram = clCreateProgramWithSource(_this->computeContext, 1,  &sourcePtr, nullptr, &err);
+    _this->computeProgram = clCreateProgramWithSource(_this->context, 1,  &sourcePtr, nullptr, &err);
     if (!_this->computeProgram || err != CL_SUCCESS)
     {
         std::cout << source << std::endl;
@@ -300,101 +419,6 @@ size_t CLContextWrapper::getWorkGroupSize(const std::string & kernelName) const
     return 0;
 }
 
-
-BufferId CLContextWrapper::createBuffer(size_t bytesSize, void * hostData, BufferType type)
-{
-    cl_int err;
-    cl_mem_flags flags =  CL_MEM_READ_WRITE;
-
-    switch (type) {
-    case BufferType::READ_ONLY:
-        flags = CL_MEM_READ_ONLY;
-        break;
-    case BufferType::WRITE_ONLY:
-        flags = CL_MEM_WRITE_ONLY;
-        break;
-    case BufferType::READ_AND_WRITE:
-        flags = CL_MEM_READ_WRITE;
-        break;
-    default:
-        break;
-    }
-
-    if(hostData)
-    {
-        flags |= CL_MEM_COPY_HOST_PTR;
-    }
-
-    cl_mem buffer =  clCreateBuffer(_this->computeContext, flags, bytesSize, hostData,  &err);
-    if(!buffer)
-    {
-        std::cout << "Error: Failed to allocate buffer" << std::endl;
-        std::cout << getError(err) << std::endl;
-        return 0;
-    }
-
-    auto newId = _this->nextBufferId;
-    _this->buffers[_this->nextBufferId++] = buffer;
-    return newId;
-}
-
-bool CLContextWrapper::uploadToBuffer(BufferId id, size_t bytesSize, void * data, size_t offset,  const bool blocking)
-{
-    cl_int err = 0;
-
-    auto it = _this->buffers.find(id);
-    if(it == _this->buffers.end())
-    {
-        std::cout << "Error: Buffer Id not created" << std::endl;
-        return false;
-    }
-
-    err = clEnqueueWriteBuffer(_this->computeCommands,
-                               it->second,
-                               blocking ? CL_TRUE : CL_FALSE,
-                               offset,
-                               bytesSize,
-                               data,
-                               0, NULL, NULL);
-
-    if(err)
-    {
-        std::cout << "Error: Failed to upload data to buffer" << std::endl;
-        std::cout << getError(err) << std::endl;
-        return false;
-    }
-    return true;
-}
-
-
-bool CLContextWrapper::dowloadFromBuffer(BufferId id, size_t bytesSize, void * data, size_t offset , const bool blocking)
-{
-    cl_int err = 0;
-
-    auto it = _this->buffers.find(id);
-    if(it == _this->buffers.end())
-    {
-        std::cout << "Error: Buffer Id not created" << std::endl;
-        return false;
-    }
-
-    err = clEnqueueReadBuffer(_this->computeCommands,
-                              it->second,
-                              blocking ? CL_TRUE : CL_FALSE,
-                              offset,
-                              bytesSize,
-                              data,
-                              0, NULL, NULL);
-
-    if(err)
-    {
-        std::cout << "Error: Failed to download data from buffer" << std::endl;
-        std::cout << getError(err) << std::endl;
-        return false;
-    }
-    return true;
-}
-
 bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange range)
 {
     return dispatchKernel(kernelName, range, std::vector<KernelArg>());
@@ -434,7 +458,7 @@ bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange ran
         }
     }
 
-    err = clEnqueueNDRangeKernel(_this->computeCommands,
+    err = clEnqueueNDRangeKernel(_this->commandQueue,
                                  kernel,
                                  range.workDim,
                                  range.globalOffset,
@@ -444,8 +468,7 @@ bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange ran
 
     if(err)
     {
-        std::cout << "Error: Failed to dispatch kernel" << std::endl;
-        std::cout << getError(err) << std::endl;
+        logError("Error: Failed to dispatch kernel", getError(err));
         return false;
     }
 
@@ -463,6 +486,127 @@ bool CLContextWrapper::setKernelArg(const std::string & kernelName, KernelArg ar
     }
 
     return _this->setKernelArg(it->second.kernel, arg, index);
+}
+
+
+BufferId CLContextWrapper::createBuffer(size_t bytesSize, void * hostData, BufferType type)
+{
+    cl_int err;
+    cl_mem_flags flags  = getMemFlags(type);
+
+    if(hostData)
+    {
+        flags |= CL_MEM_COPY_HOST_PTR;
+    }
+
+    cl_mem buffer =  clCreateBuffer(_this->context, flags, bytesSize, hostData,  &err);
+    if(!buffer)
+    {
+        std::cout << "Error: Failed to allocate buffer" << std::endl;
+        std::cout << getError(err) << std::endl;
+        return 0;
+    }
+
+    auto newId = _this->nextBufferId;
+    _this->buffers[_this->nextBufferId++] = buffer;
+    return newId;
+}
+
+bool CLContextWrapper::uploadToBuffer(BufferId id, size_t bytesSize, void * data, size_t offset,  const bool blocking)
+{
+    cl_int err = 0;
+
+    auto it = _this->buffers.find(id);
+    if(it == _this->buffers.end())
+    {
+        std::cout << "Error: Buffer Id not created" << std::endl;
+        return false;
+    }
+
+    err = clEnqueueWriteBuffer(_this->commandQueue,
+                               it->second,
+                               blocking ? CL_TRUE : CL_FALSE,
+                               offset,
+                               bytesSize,
+                               data,
+                               0, NULL, NULL);
+
+    if(err)
+    {
+        std::cout << "Error: Failed to upload data to buffer" << std::endl;
+        std::cout << getError(err) << std::endl;
+        return false;
+    }
+    return true;
+}
+
+
+bool CLContextWrapper::dowloadFromBuffer(BufferId id, size_t bytesSize, void * data, size_t offset , const bool blocking)
+{
+    cl_int err = 0;
+
+    auto it = _this->buffers.find(id);
+    if(it == _this->buffers.end())
+    {
+        std::cout << "Error: Buffer Id not created" << std::endl;
+        return false;
+    }
+
+    err = clEnqueueReadBuffer(_this->commandQueue,
+                              it->second,
+                              blocking ? CL_TRUE : CL_FALSE,
+                              offset,
+                              bytesSize,
+                              data,
+                              0, NULL, NULL);
+
+    if(err)
+    {
+        std::cout << "Error: Failed to download data from buffer" << std::endl;
+        std::cout << getError(err) << std::endl;
+        return false;
+    }
+    return true;
+}
+
+BufferId CLContextWrapper::shareGLTexture(const GLTextureId textureId, BufferType type)
+{
+
+    auto flags = getMemFlags(type);
+
+    cl_int err = 0;
+
+    cl_mem mem = clCreateFromGLTexture(_this->context, flags, GL_TEXTURE_2D, 0, textureId, &err);
+
+    if(err || !mem)
+    {
+        logError("Error: Failed to share texture with Opengl.", getError(err));
+        return 0;
+    }
+
+    _this->buffers[_this->nextBufferId] = mem;
+    const BufferId outBufferID = _this->nextBufferId;
+    _this->nextBufferId++;
+
+    return outBufferID;
+
+}
+
+void CLContextWrapper::executeSafeAndSyncronized(BufferId * textureToLock, size_t count, std::function<void()> exec)
+{
+    cl_mem * objs = new cl_mem[count];
+
+    for(size_t i=0 ; i < count ;i++)
+    {
+        objs[i] = _this->buffers[textureToLock[i]];
+    }
+
+    clEnqueueAcquireGLObjects(_this->commandQueue, count, objs, 0, nullptr, nullptr);
+
+    exec();
+
+    clEnqueueReleaseGLObjects(_this->commandQueue, count, objs, 0, nullptr, nullptr);
+    delete [] objs;
 }
 
 std::vector<std::string> CLContextWrapper::listAvailablePlatforms()
@@ -495,3 +639,5 @@ std::vector<std::string> CLContextWrapper::listAvailablePlatforms()
     return platformList;
 
 }
+
+

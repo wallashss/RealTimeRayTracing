@@ -9,15 +9,41 @@
 
 #include <iostream>
 
-GLView::GLView() : QOpenGLWidget()
+GLView::GLView(std::function<void(GLView *)> initCallback) : QOpenGLWidget()
 {
-//    QSurfaceFormat glFormat;
-//    glFormat.setVersion( 3, 3 );
-//    glFormat.setProfile(QSurfaceFormat::OpenGLContextProfile::CompatibilityProfile);
-//    glFormat.setSwapBehavior(QSurfaceFormat::SwapBehavior::SingleBuffer);
-//    glFormat.setSwapInterval(0);
+#if __APPLE__
+    QSurfaceFormat glFormat;
+    glFormat.setVersion( 3, 3 );
+    glFormat.setProfile(QSurfaceFormat::OpenGLContextProfile::CompatibilityProfile);
+    glFormat.setSwapBehavior(QSurfaceFormat::SwapBehavior::SingleBuffer);
+    glFormat.setSwapInterval(0);
+    setFormat(glFormat);
+#endif
 
-//    setFormat(glFormat);
+    _initCallback =  initCallback;
+
+}
+
+GLuint GLView::createTexture(unsigned int width, unsigned int height)
+{
+    GLuint textureId;
+    glGenTextures(1, &textureId);
+    glBindTexture(GL_TEXTURE_2D, textureId);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+
+    return textureId;
+}
+
+void GLView::setPaintCallback(std::function<void(GLView*)> callback)
+{
+    _paintCallback = callback;
+}
+
+void GLView::setBaseTexture(GLuint newTextureId)
+{
+    _textureBuffer = newTextureId;
 }
 
 void GLView::paintGL()
@@ -35,6 +61,11 @@ void GLView::paintGL()
     glBindTexture(GL_TEXTURE_2D, _textureBuffer);
     glEnable(GL_TEXTURE_2D);
 
+    if(_paintCallback)
+    {
+        _paintCallback(this);
+    }
+
     glBegin(GL_QUADS);
     {
        glTexCoord2f(0.0f, 1.0f); glVertex2f(-1.0f,  1.0f);
@@ -46,12 +77,19 @@ void GLView::paintGL()
 
     glDisable(GL_TEXTURE_2D);
     _checkErrors("after draw");
+
+    std::cout << "Draw " << std::endl;
 }
 
 void GLView::initializeGL()
 {
     // Initialize OpenGL Functions
     initializeOpenGLFunctions();
+
+    if(_initCallback)
+    {
+        _initCallback(this);
+    }
 
     glViewport(0, 0, width(), height());
 
