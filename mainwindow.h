@@ -3,6 +3,7 @@
 #include <QMainWindow>
 
 #include <clcontextwrapper.h>
+#include <memory>
 
 class MainWindow : public QWidget
 {
@@ -15,5 +16,5 @@ public:
 
 private:
     void _testOpenCL();
-//     CLContextWrapper *clContext;
+    std::shared_ptr<CLContextWrapper> clContext;
 };

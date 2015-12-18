@@ -16,9 +16,11 @@ TEMPLATE = app
 
 INCLUDEPATH += glm
 
-SOURCES += *.cpp
+SOURCES += *.cpp \
+    drawables.cpp
 
-HEADERS  += *.h
+HEADERS  += *.h \
+    drawables.h
 HEADERS  += *.hpp
 
 macx {

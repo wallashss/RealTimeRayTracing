@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 
 #include <glview.h>
+#include <drawables.h>
 
 #include <QBoxLayout>
 #include <QFile>
@@ -8,7 +9,6 @@
 #include <QTextStream>
 
 #include <iostream>
-#include <memory>
 
 
 MainWindow::MainWindow(QWidget *parent)
@@ -19,9 +19,12 @@ MainWindow::MainWindow(QWidget *parent)
 
     QHBoxLayout * hlayout = new QHBoxLayout();
 
-    std::shared_ptr<CLContextWrapper> clContext = std::make_shared<CLContextWrapper>();
+    clContext = std::make_shared<CLContextWrapper>();
     std::shared_ptr<BufferId> textureToUpId = std::make_shared<BufferId>(0);
     std::shared_ptr<GLuint> glTexId = std::make_shared<BufferId>(0);
+
+    int textureWidth = 640;
+    int textureHeight = 480;
 
     GLView * glView = new GLView([=] (GLView * newGlView) mutable
     {
@@ -30,7 +33,7 @@ MainWindow::MainWindow(QWidget *parent)
             std::cout << "Successfully created OpenCL context with OpenGL" << std::endl;
         }
 
-        auto textureId = newGlView->createTexture(640, 480);
+        auto textureId = newGlView->createTexture(textureWidth, textureHeight);
         auto bufferId = clContext->shareGLTexture(textureId, BufferType::WRITE_ONLY);
 
         *textureToUpId = bufferId;
@@ -54,9 +57,11 @@ MainWindow::MainWindow(QWidget *parent)
         clContext->createProgramFromSource(clSource.toStdString());
         clContext->prepareKernel("testKernel");
         clContext->prepareKernel("testTexture");
+        clContext->prepareKernel("rayTracing");
     });
 
-    glView->setFixedSize(640, 480);
+
+    glView->setFixedSize(textureWidth, textureHeight);
 
     QPushButton *drawButton = new QPushButton("Draw");
     QObject::connect(drawButton, &QPushButton::clicked,[=]
@@ -73,14 +78,137 @@ MainWindow::MainWindow(QWidget *parent)
         range.localSize[0] = 16;
         range.localSize[1] = 12;
 
-        auto tid = *textureToUpId.get();
-        clContext->executeSafeAndSyncronized(&tid, 1, [&]
-        {
-            KernelArg arg1;
-            arg1.data = &tid;
-            arg1.type = KernelArgType::OPENGL;
+        BufferId bid = *(textureToUpId.get());
 
-            clContext->dispatchKernel("testTexture", range, {arg1});
+
+        std::vector<dwg::Sphere> spheres;
+
+        dwg::Sphere s;
+
+        // Light blue
+        s.position = glm::vec3(5,0,18);
+        s.radius = 5.0f;
+        s.color =  glm::vec3(0.5,0.5,1);
+        spheres.push_back(s);
+
+        // purple
+        s.position = glm::vec3(-5,-3,20);
+        s.radius = 2.0f;
+        s.color = glm::vec3(1,0,1);
+        spheres.push_back(s);
+
+        // blue
+        s.position = glm::vec3(-10,0,25.0f);
+        s.radius = 2.0f;
+        s.color = glm::vec3(0,0,1);
+        spheres.push_back(s);
+
+
+        // green
+        s.position = glm::vec3(5,-4,4.0f);
+        s.radius = 1.0f;
+        s.color = glm::vec3(0,1,0);
+        spheres.push_back(s);
+
+        // Red
+        s.position = glm::vec3(1,-3,5.0f);
+        s.radius = 2.0f;
+        s.color = glm::vec3(1,0,0);
+        spheres.push_back(s);
+
+        // Red
+        s.position = glm::vec3(-5,-3.5,5.0f);
+        s.radius = 2.0f;
+        s.color = glm::vec3(1,1,1);
+        spheres.push_back(s);
+
+        // Yellow
+        s.position = glm::vec3(-5,-3.5,5.0f);
+        s.radius = 1.7f;
+        s.color = glm::vec3(1,1,0);
+        spheres.push_back(s);
+
+        float *fSphere = new float[spheres.size()];
+        float *fColorSphere = new float[spheres.size()];
+
+        for(int i =0 ; i  < spheres.size(); i++)
+        {
+            dwg::Sphere sphere = spheres[i];
+            fSphere[i*4+0] = sphere.position.x;
+            fSphere[i*4+1] = sphere.position.y;
+            fSphere[i*4+2] = sphere.position.z;
+            fSphere[i*4+3] = sphere.radius;
+
+            fColorSphere[i*3+0] = sphere.color.r;
+            fColorSphere[i*3+1] = sphere.color.g;
+            fColorSphere[i*3+2] = sphere.color.b;
+        }
+
+        size_t numSpheres = spheres.size();
+
+        clContext->executeSafeAndSyncronized(&bid, 1, [=] ()
+        {
+            BufferId newBid = bid;
+            KernelArg imageArg;
+            imageArg.data = static_cast<void*>(&newBid);
+            imageArg.type = KernelArgType::OPENGL;
+
+            KernelArg sphereArg;
+            auto sphereId = clContext->createBuffer(sizeof(float)*4*numSpheres, fSphere, BufferType::READ_ONLY);
+            sphereArg.data = &sphereId;
+            sphereArg.type = KernelArgType::GLOBAL;
+
+            KernelArg sphereColorArg;
+            auto colorsSphereId = clContext->createBuffer(sizeof(float)*3*numSpheres, fColorSphere, BufferType::READ_ONLY);
+            sphereColorArg.data = &colorsSphereId;
+            sphereColorArg.type = KernelArgType::GLOBAL;
+
+            KernelArg numSpheresArg;
+            int *numSpheresPtr = new int;
+            *numSpheresPtr = static_cast<int>(numSpheres);
+            numSpheresArg.data = numSpheresPtr;
+            numSpheresArg.type = KernelArgType::CONSTANT;
+            numSpheresArg.byteSize = sizeof(int);
+
+            KernelArg eyeXArg;
+            float *eyeX = new float;
+            *eyeX = 0.0f;
+            eyeXArg.data = eyeX;
+            eyeXArg.type = KernelArgType::CONSTANT;
+            eyeXArg.byteSize = sizeof(float);
+
+            KernelArg eyeYArg;
+            float *eyeY = new float;
+            *eyeY = 0.0f;
+            eyeYArg.data = eyeY;
+            eyeYArg.type = KernelArgType::CONSTANT;
+            eyeYArg.byteSize = sizeof(float);
+
+            KernelArg eyeZArg;
+            float *eyeZ = new float;
+            *eyeZ = 0.0f;
+            eyeZArg.data = eyeZ;
+            eyeZArg.type = KernelArgType::CONSTANT;
+            eyeZArg.byteSize = sizeof(float);
+
+            KernelArg widthArg;
+            int *width = new int;
+            *width = textureWidth;
+            widthArg.data = width;
+            widthArg.type = KernelArgType::CONSTANT;
+            widthArg.byteSize = sizeof(int);
+
+            KernelArg heightArg;
+            int *height = new int;
+            *height = textureHeight;
+            heightArg.data = height;
+            heightArg.type = KernelArgType::CONSTANT;
+            heightArg.byteSize = sizeof(int);
+
+            std::cout << "Before dispatch " << std::endl;
+
+
+            clContext->dispatchKernel("rayTracing", range, {imageArg, sphereArg, sphereColorArg, numSpheresArg, eyeXArg, eyeYArg, eyeZArg, widthArg, heightArg});
         });
 
         glView->context()->doneCurrent();

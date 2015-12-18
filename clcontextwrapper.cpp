@@ -61,12 +61,17 @@ struct CLContextWrapperPrivate
         {
         case KernelArgType::GLOBAL:
         case KernelArgType::OPENGL:
+        {
             argSize = sizeof(cl_mem);
-            data = &buffers.at(*static_cast<BufferId*>(arg.data));
+            BufferId bid = *(static_cast<BufferId*>(arg.data));
+            std::cout << "Set kernel " << index << " " << bid << std::endl;
+            data = &buffers.at(bid);
             break;
+        }
         default:
             argSize = arg.byteSize;
             break;
+
         }
 
         cl_uint uindex = static_cast<cl_uint>(index);
@@ -132,6 +137,10 @@ static std::string getError(cl_int error)
         return "Invalid Mem Object. (Invalid Buffer)";
     case CL_INVALID_IMAGE_FORMAT_DESCRIPTOR:
         return "Invalid Image Format Descriptor";
+    case CL_INVALID_ARG_SIZE:
+        return "Invalid Arg Size";
+    case CL_BUILD_PROGRAM_FAILURE:
+        return "Build program Failure";
     default:
     {
         std::stringstream ss;
@@ -287,7 +296,6 @@ bool CLContextWrapper::createContext(DeviceType deviceType)
 
 bool CLContextWrapper::createContextWithOpengl()
 {
-
     cl_platform_id platform;
 
     cl_int err = clGetPlatformIDs(1, &platform, nullptr);
@@ -441,19 +449,25 @@ bool CLContextWrapper::createProgramFromSource(const std::string & source)
     _this->computeProgram = clCreateProgramWithSource(_this->context, 1,  &sourcePtr, nullptr, &err);
     if (!_this->computeProgram || err != CL_SUCCESS)
     {
+        std::cout << "___________Begin Source___________________" << std::endl;
         std::cout << source << std::endl;
+        std::cout << "___________End Source___________________" << std::endl;
         std::cout << "Error: Failed to create compute program! " << std::endl;
         return false;
     }
 
     // Build the program executable
-    err = clBuildProgram(_this->computeProgram, 0, NULL, NULL, NULL, NULL);
+    const cl_device_id const_device_id = _this->deviceId;
+    err = clBuildProgram(_this->computeProgram, 1,&const_device_id, NULL, NULL, NULL);
     if (err != CL_SUCCESS)
     {
         size_t length;
         char buildLog[2048];
+        std::cout << "___________Begin Source___________________" << std::endl;
         std::cout <<  source << std::endl;
+        std::cout << "___________End Source___________________" << std::endl;
         std::cout << "Error: Failed to build program executable!" << std::endl;
+        std::cout << getError(err) << std::endl;
         clGetProgramBuildInfo(_this->computeProgram, _this->deviceId, CL_PROGRAM_BUILD_LOG, sizeof(buildLog), buildLog, &length);
         std::cout << buildLog << std::endl;
         return EXIT_FAILURE;
@@ -595,8 +609,10 @@ BufferId CLContextWrapper::createBuffer(size_t bytesSize, void * hostData, Buffe
         return 0;
     }
 
+
+    _this->buffers[_this->nextBufferId] = buffer;
     auto newId = _this->nextBufferId;
-    _this->buffers[_this->nextBufferId++] = buffer;
+    _this->nextBufferId++;
     return newId;
 }
 
@@ -685,7 +701,7 @@ void CLContextWrapper::executeSafeAndSyncronized(BufferId * textureToLock, unsig
 
     for(size_t i=0 ; i < count ;i++)
     {
-        objs[i] = _this->buffers[textureToLock[i]];
+        objs[i] = _this->buffers.at(textureToLock[i]);
     }
 
     clEnqueueAcquireGLObjects(_this->commandQueue, count, objs, 0, nullptr, nullptr);
