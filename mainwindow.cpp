@@ -284,47 +284,26 @@ MainWindow::MainWindow(QWidget *parent)
 
         clContext->executeSafeAndSyncronized(&_sharedTextureBufferId, 1, [=] () mutable
         {
-            KernelArg imageArg;
-            imageArg.data = static_cast<void*>(&_sharedTextureBufferId);
-            imageArg.type = KernelArgType::OPENGL;
-
-            // Spheres
-            KernelArg sphereArg(&_spheresBufferId, KernelArgType::GLOBAL);
-            KernelArg numSpheresArg(&numSpheres);
-
-            // Planes
-            KernelArg planesArg(&_planesBufferId, KernelArgType::GLOBAL);
-            KernelArg numPlanesArg(&numPlanes);
-
-            // Lights
-            KernelArg lightsArg(&_lightsBufferId,KernelArgType::GLOBAL);
-            KernelArg lightCountArg(&numLights);
-
             // Camera
             glm::vec3 eye(0,0, -30.0f);
 
-            KernelArg eyeXArg(&eye.x);
-            KernelArg eyeYArg(&eye.y);
-            KernelArg eyeZArg(&eye.z);
-
-            // Image dimension
-            KernelArg widthArg(&textureWidth);
-            KernelArg heightArg(&textureHeight);
-
-            std::cout << "Before dispatch " << std::endl;
-
-            clContext->dispatchKernel("rayTracing", range, {imageArg,
-                                                            sphereArg, numSpheresArg,
-                                                            planesArg, numPlanesArg,
-                                                            lightsArg, lightCountArg,
-                                                            eyeXArg, eyeYArg, eyeZArg,
-                                                            widthArg, heightArg});
+            clContext->dispatchKernel("rayTracing", range, {&_sharedTextureBufferId,
+                                                            &_spheresBufferId, &numSpheres,
+                                                            &_planesBufferId, &numPlanes,
+                                                            &_lightsBufferId, &numLights,
+                                                            &eye.x, &eye.y, &eye.z,
+                                                            &textureWidth, &textureHeight});
         });
+
+
 
         _glView->doneCurrent();
 
+        setWindowTitle(QString::fromStdString("Rendered: ") + QString::fromStdString(std::to_string(t.elapsedMilliSec())) + QString(" ms"));
+        std::cout << "Raytracing time: "<< t.elapsedMilliSec();
+        t.restart();
         _glView->repaint();
-        std::cout << t.elapsedMilliSec() << std::endl;
+        std::cout << " Rendering time: "<< t.elapsedMilliSec() << std::endl;
     });
 
     hlayout->addWidget(_glView);

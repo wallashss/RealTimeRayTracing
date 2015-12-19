@@ -52,34 +52,13 @@ struct CLContextWrapperPrivate
     cl_program          computeProgram;
 
     std::unordered_map<std::string, KernelInfo> kernels;
-    std::unordered_map<BufferId, cl_mem> buffers;
-    BufferId nextBufferId;
+    std::vector<cl_mem> buffers;
 
     bool setKernelArg(cl_kernel kernel, KernelArg arg, int index)
     {
-        size_t argSize = 0;
-        void * data = arg.data;
-
-        switch(arg.type)
-        {
-        case KernelArgType::GLOBAL:
-        case KernelArgType::OPENGL:
-        {
-            argSize = sizeof(cl_mem);
-            BufferId bid = *(static_cast<BufferId*>(arg.data));
-            std::cout << "Set kernel " << index << " " << bid << std::endl;
-            data = &buffers.at(bid);
-            break;
-        }
-        default:
-            argSize = arg.byteSize;
-            break;
-
-        }
-
         cl_uint uindex = static_cast<cl_uint>(index);
 
-        int err = clSetKernelArg(kernel, uindex, argSize, data);
+        int err = clSetKernelArg(kernel, uindex, arg.byteSize, arg.data);
 
         if(err)
         {
@@ -182,7 +161,7 @@ static inline void logError(const std::string & error, const std::string & error
 CLContextWrapper::CLContextWrapper() : _hasCreatedContext(false), _deviceType(DeviceType::NONE)
 {
     _this = new CLContextWrapperPrivate;
-    _this->nextBufferId = 1;
+//    _this->nextBufferId = 1;
 }
 
 CLContextWrapper::~CLContextWrapper()
@@ -191,9 +170,14 @@ CLContextWrapper::~CLContextWrapper()
     {
         clReleaseKernel(it.second.kernel);
     }
-    for(auto it : _this->buffers)
+
+//    for(auto it : _this->buffers)
+//    {
+//        clReleaseMemObject(it.second);
+//    }
+    for(auto mem : _this->buffers)
     {
-        clReleaseMemObject(it.second);
+        clReleaseMemObject(mem);
     }
 
     if(_this->commandQueue)
@@ -585,7 +569,6 @@ bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange ran
         }
     }
 
-    util::Timer t;
     err = clEnqueueNDRangeKernel(_this->commandQueue,
                                  kernel,
                                  range.workDim,
@@ -636,26 +619,23 @@ BufferId CLContextWrapper::createBuffer(size_t bytesSize, void * hostData, Buffe
         return 0;
     }
 
-
-    _this->buffers[_this->nextBufferId] = buffer;
-    auto newId = _this->nextBufferId;
-    _this->nextBufferId++;
-    return newId;
+    _this->buffers.push_back(buffer);
+    return buffer;
 }
 
 bool CLContextWrapper::uploadToBuffer(BufferId id, size_t bytesSize, void * data, size_t offset,  const bool blocking)
 {
     cl_int err = 0;
 
-    auto it = _this->buffers.find(id);
-    if(it == _this->buffers.end())
-    {
-        std::cout << "Error: Buffer Id not created" << std::endl;
-        return false;
-    }
+//    auto it = _this->buffers.find(id);
+//    if(it == _this->buffers.end())
+//    {
+//        std::cout << "Error: Buffer Id not created" << std::endl;
+//        return false;
+//    }
 
     err = clEnqueueWriteBuffer(_this->commandQueue,
-                               it->second,
+                               static_cast<cl_mem>(id),
                                blocking ? CL_TRUE : CL_FALSE,
                                offset,
                                bytesSize,
@@ -676,15 +656,15 @@ bool CLContextWrapper::dowloadFromBuffer(BufferId id, size_t bytesSize, void * d
 {
     cl_int err = 0;
 
-    auto it = _this->buffers.find(id);
-    if(it == _this->buffers.end())
-    {
-        std::cout << "Error: Buffer Id not created" << std::endl;
-        return false;
-    }
+//    auto it = _this->buffers.find(id);
+//    if(it == _this->buffers.end())
+//    {
+//        std::cout << "Error: Buffer Id not created" << std::endl;
+//        return false;
+//    }
 
     err = clEnqueueReadBuffer(_this->commandQueue,
-                              it->second,
+                              static_cast<cl_mem>(id),
                               blocking ? CL_TRUE : CL_FALSE,
                               offset,
                               bytesSize,
@@ -714,31 +694,21 @@ BufferId CLContextWrapper::shareGLTexture(const GLTextureId textureId, BufferTyp
         return 0;
     }
 
-    _this->buffers[_this->nextBufferId] = mem;
-    const BufferId outBufferID = _this->nextBufferId;
-    _this->nextBufferId++;
+    _this->buffers.push_back(mem);
 
-    return outBufferID;
+    return mem;
 
 }
 
 void CLContextWrapper::executeSafeAndSyncronized(BufferId * textureToLock, unsigned int count, std::function<void()> exec)
 {
-    cl_mem * objs = new cl_mem[count];
-
-    for(size_t i=0 ; i < count ;i++)
-    {
-        objs[i] = _this->buffers.at(textureToLock[i]);
-    }
-
-    clEnqueueAcquireGLObjects(_this->commandQueue, count, objs, 0, nullptr, nullptr);
+    clEnqueueAcquireGLObjects(_this->commandQueue, count, reinterpret_cast<cl_mem*>(textureToLock), 0, nullptr, nullptr);
 
     exec();
 
-    clEnqueueReleaseGLObjects(_this->commandQueue, count, objs, 0, nullptr, nullptr);
+    clEnqueueReleaseGLObjects(_this->commandQueue, count, reinterpret_cast<cl_mem*>(textureToLock), 0, nullptr, nullptr);
 
     clFinish(_this->commandQueue);
-    delete [] objs;
 }
 
 std::vector<std::string> CLContextWrapper::listAvailablePlatforms()

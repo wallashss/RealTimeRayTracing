@@ -21,7 +21,6 @@ GLView::GLView(std::function<void(GLView *)> initCallback) : QOpenGLWidget()
 #endif
 
     _initCallback =  initCallback;
-
 }
 
 GLuint GLView::createTexture(unsigned int width, unsigned int height)
@@ -51,7 +50,7 @@ void GLView::setBaseTexture(GLuint newTextureId)
 void GLView::paintGL()
 {
     _checkErrors("before draw");
-    glClear(GL_COLOR_BUFFER_BIT);
+//    glClear(GL_COLOR_BUFFER_BIT);
 
     glUseProgram(0);
     glMatrixMode(GL_MODELVIEW);

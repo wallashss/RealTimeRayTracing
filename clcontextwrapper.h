@@ -58,44 +58,19 @@ struct TextureParams
 
 };
 
-enum class KernelArgType
-{
-    GLOBAL,
-    LOCAL,
-    OPENGL,
-    CONSTANT
-};
-
 struct KernelArg
 {
-    KernelArgType type;
     size_t        byteSize;
     void          *data;
 
-    KernelArg()  : type(KernelArgType::CONSTANT), byteSize(0), data(nullptr)
-    {
-
-    }
-
-    KernelArg(void * aData, size_t aByteSize, KernelArgType aType)  : type(aType), byteSize(aByteSize), data(aData)
-    {
-
-    }
-
-    KernelArg(void * aData, KernelArgType aType)  : type(aType), byteSize(0), data(aData)
-    {
-
-    }
-
     template <typename T>
-    KernelArg(T* aData) : type(KernelArgType::CONSTANT), byteSize(sizeof(T)), data(aData)
+    KernelArg(T* aData) : byteSize(sizeof(T)), data(aData)
     {
 
     }
-
 };
 
-typedef unsigned int BufferId;
+typedef void * BufferId; // TODO: Make an assert to ensure cl_mem = void *
 typedef unsigned int GLTextureId;
 
 class CLContextWrapper
