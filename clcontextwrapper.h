@@ -34,7 +34,7 @@ struct NDRange
         workDim = 0;
         globalSize[0] = globalSize[1] = globalSize[2] = 0;
         localSize[0] = localSize[1] = localSize[2] = 0;
-        globalOffset[0] = globalOffset[1] = globalOffset[2];
+        globalOffset[0] = globalOffset[1] = globalOffset[2] = 0;
     }
 };
 
@@ -68,10 +68,31 @@ enum class KernelArgType
 
 struct KernelArg
 {
-    int           index;
     KernelArgType type;
     size_t        byteSize;
     void          *data;
+
+    KernelArg()  : type(KernelArgType::CONSTANT), byteSize(0), data(nullptr)
+    {
+
+    }
+
+    KernelArg(void * aData, size_t aByteSize, KernelArgType aType)  : type(aType), byteSize(aByteSize), data(aData)
+    {
+
+    }
+
+    KernelArg(void * aData, KernelArgType aType)  : type(aType), byteSize(0), data(aData)
+    {
+
+    }
+
+    template <typename T>
+    KernelArg(T* aData) : type(KernelArgType::CONSTANT), byteSize(sizeof(T)), data(aData)
+    {
+
+    }
+
 };
 
 typedef unsigned int BufferId;

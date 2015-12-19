@@ -32,13 +32,16 @@ typedef CL_API_ENTRY cl_int (CL_API_CALL *clGetGLContextInfoKHR_fn)(
 static clGetGLContextInfoKHR_fn clGetGLContextInfoKHR;
 #endif
 
+#include <timer.h>
+
 static std::string getError(cl_int error);
 static inline void logError(const std::string & error, const std::string & errorDetail );
 
 struct KernelInfo
 {
-    cl_kernel   kernel;
-    size_t      workGroupSize;
+    cl_kernel       kernel;
+    size_t          workGroupSize;
+    unsigned long   localMemSize;
 };
 
 struct CLContextWrapperPrivate
@@ -141,6 +144,8 @@ static std::string getError(cl_int error)
         return "Invalid Arg Size";
     case CL_BUILD_PROGRAM_FAILURE:
         return "Build program Failure";
+    case CL_INVALID_KERNEL_NAME:
+        return "Invalid Kernel Name";
     default:
     {
         std::stringstream ss;
@@ -459,19 +464,25 @@ bool CLContextWrapper::createProgramFromSource(const std::string & source)
     // Build the program executable
     const cl_device_id const_device_id = _this->deviceId;
     err = clBuildProgram(_this->computeProgram, 1,&const_device_id, NULL, NULL, NULL);
+
+    size_t length;
+    char buildLog[2048];
+    clGetProgramBuildInfo(_this->computeProgram, _this->deviceId, CL_PROGRAM_BUILD_LOG, sizeof(buildLog), buildLog, &length);
+    if(length > 1)
+    {
+        std::cout << buildLog << std::endl;
+    }
+
     if (err != CL_SUCCESS)
     {
-        size_t length;
-        char buildLog[2048];
         std::cout << "___________Begin Source___________________" << std::endl;
         std::cout <<  source << std::endl;
         std::cout << "___________End Source___________________" << std::endl;
         std::cout << "Error: Failed to build program executable!" << std::endl;
         std::cout << getError(err) << std::endl;
-        clGetProgramBuildInfo(_this->computeProgram, _this->deviceId, CL_PROGRAM_BUILD_LOG, sizeof(buildLog), buildLog, &length);
-        std::cout << buildLog << std::endl;
-        return EXIT_FAILURE;
+        return false;
     }
+
 
     std::cout << "Succesfully created program" << std::endl;
     return true;
@@ -488,6 +499,7 @@ bool CLContextWrapper::prepareKernel(const std::string & kernelName)
     if (!newKernel || err != CL_SUCCESS)
     {
         std::cout << "Error: Failed to create compute kernel!" << std::endl;
+        std::cout << getError(err) << std::endl;
         return false;
     }
 
@@ -497,16 +509,30 @@ bool CLContextWrapper::prepareKernel(const std::string & kernelName)
     if(err)
     {
         std::cout << "Error: Failed to get kernel work group size" << std::endl;
+        std::cout << getError(err) << std::endl;
+        return false;
+    }
+
+    unsigned long lmemSize;
+    err = clGetKernelWorkGroupInfo(newKernel, _this->deviceId, CL_KERNEL_LOCAL_MEM_SIZE, sizeof(size_t), &lmemSize, NULL);
+    if(err)
+    {
+        std::cout << "Error: Failed to get kernel local memory size" << std::endl;
+        std::cout << getError(err) << std::endl;
         return false;
     }
 
     KernelInfo info;
     info.kernel = newKernel;
     info.workGroupSize = wgSize;
+    info.workGroupSize = lmemSize;
 
     _this->kernels[kernelName] = info;
 
     std::cout << "Succesfully prepared kernel '" << kernelName << "'" << std::endl;
+    std::cout << "Work group size :" << wgSize << std::endl;
+    std::cout << "Local Memory size :" << lmemSize << std::endl;
+
 
     return true;
 }
@@ -543,7 +569,6 @@ bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange ran
 
     if(!args.empty())
     {
-
         bool allOk = true;
         for(decltype(args.size()) i = 0; i < args.size() ; i++)
         {
@@ -560,6 +585,7 @@ bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange ran
         }
     }
 
+    util::Timer t;
     err = clEnqueueNDRangeKernel(_this->commandQueue,
                                  kernel,
                                  range.workDim,
@@ -567,6 +593,7 @@ bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange ran
                                  range.globalSize,
                                  range.localSize,
                                  0, nullptr, nullptr );
+
 
     if(err)
     {

@@ -1,7 +1,7 @@
 #include "mainwindow.h"
 
 #include <glview.h>
-#include <drawables.h>
+#include <drawables.hpp>
 
 #include <QBoxLayout>
 #include <QFile>
@@ -10,6 +10,142 @@
 
 #include <iostream>
 
+#include <timer.h>
+
+std::vector<dwg::Sphere> inline getSceneSpheres()
+{
+    std::vector<dwg::Sphere> spheres;
+    dwg::Sphere s;
+
+    // Light blue
+    s.position = glm::vec3(5,0,18);
+    s.radius = 5.0f;
+    s.color =  glm::vec3(0.5,0.5,1);
+    spheres.push_back(s);
+
+    // purple
+    s.position = glm::vec3(-5,-3,20);
+    s.radius = 2.0f;
+    s.color = glm::vec3(1,0,1);
+    spheres.push_back(s);
+
+    // blue
+    s.position = glm::vec3(-10,0,25.0f);
+    s.radius = 5.0f;
+    s.color = glm::vec3(0,0,1);
+    spheres.push_back(s);
+
+    // green
+    s.position = glm::vec3(5,-4,4.0f);
+    s.radius = 1.0f;
+    s.color = glm::vec3(0,1,0);
+    spheres.push_back(s);
+
+    // Red
+    s.position = glm::vec3(1,-3,5.0f);
+    s.radius = 2.0f;
+    s.color = glm::vec3(1,0,0);
+    spheres.push_back(s);
+
+    // Transparent
+    s.position = glm::vec3(-5,-3.5,5.0f);
+    s.radius = 2.0f;
+    s.color = glm::vec3(1,1,1);
+    spheres.push_back(s);
+
+    // Yellow
+    s.position = glm::vec3(-1,-3.3,1.0f);
+    s.radius = 1.7f;
+    s.color = glm::vec3(1,1,0);
+    spheres.push_back(s);
+
+    return spheres;
+}
+
+std::vector<dwg::Light> inline getSceneLights()
+{
+    std::vector<dwg::Light> lights;
+    dwg::Light l;
+
+    l.position = glm::vec3(0,15,20);
+    l.color = glm::vec3(1,1,1);
+    lights.push_back(l);
+
+    l.position = glm::vec3(-10,15,40);
+    l.color = glm::vec3(1,1,1);
+    lights.push_back(l);
+
+    l.position = glm::vec3(0,5,0);
+    l.color = glm::vec3(2,2,2);
+    lights.push_back(l);
+
+    l.position = glm::vec3(0,10,0);
+    l.color = glm::vec3(1,1,1);
+    lights.push_back(l);
+
+    return lights;
+}
+
+std::vector<dwg::Plane> inline getScenePlanes()
+{
+    std::vector<dwg::Plane> planes;
+    dwg::Plane p;
+
+    p.position = glm::vec3(0,-5,0);
+    p.pointA = glm::vec3(1,-5,0);
+    p.pointB = glm::vec3(1,-5,1);
+    p.color = glm::vec3(1.0f, 1.0f, 1.0f);
+    planes.push_back(p);
+
+//    floor->color1 = Drawable::blackColor;
+//    floor->color2 = glm::vec3(1.5f,1.5f,1.5f);
+//    floor->tileSize = 2.5f;
+
+//    floor->type = Drawable::Type::REFLEXIVE;
+
+//    Plane * ceil = new Plane("ceil");
+
+    p.position = glm::vec3(0,20,0);
+    p.pointA = glm::vec3(1,20,1);
+    p.pointB = glm::vec3(1,20,0);
+    p.color = glm::vec3(0.6f,0.6f,0.6f);
+    planes.push_back(p);
+
+
+//    Plane * back = new Plane("back");
+
+    p.position = glm::vec3(0,0,50);
+    p.pointA = glm::vec3(1,0,50);
+    p.pointB = glm::vec3(1,1,50);
+    p.color = glm::vec3(.2f,0.2f,0.2f);
+    planes.push_back(p);
+//    back->specularColor = glm::vec3(2.0f,2.0f,2.0f);
+//    back->type = Drawable::Type::REFLEXIVE;
+
+//    Plane * front = new Plane("front");
+
+    p.position = glm::vec3(0,0,-10);
+    p.pointA = glm::vec3(1,1,-10);
+    p.pointB = glm::vec3(1,0,-10);
+    p.color = glm::vec3(.7f,0.7f,0.7f);
+    planes.push_back(p);
+
+//    Plane * rightWall = new Plane("rightWall");
+    p.position = glm::vec3(15,0,0);
+    p.pointA = glm::vec3(15,1,0);
+    p.pointB = glm::vec3(15,1,1);
+    p.color = glm::vec3(1,0,0);
+    planes.push_back(p);
+
+
+//    Plane * leftWall = new Plane("leftWall");
+    p.position = glm::vec3(-15,0,0);
+    p.pointA = glm::vec3(-15,1,1);
+    p.pointB = glm::vec3(-15,1,0);
+    p.color = glm::vec3(0,0,1);
+    planes.push_back(p);
+    return planes;
+}
 
 MainWindow::MainWindow(QWidget *parent)
     : QWidget(parent)
@@ -20,24 +156,87 @@ MainWindow::MainWindow(QWidget *parent)
     QHBoxLayout * hlayout = new QHBoxLayout();
 
     clContext = std::make_shared<CLContextWrapper>();
-    std::shared_ptr<BufferId> textureToUpId = std::make_shared<BufferId>(0);
-    std::shared_ptr<GLuint> glTexId = std::make_shared<BufferId>(0);
 
     int textureWidth = 640;
     int textureHeight = 480;
 
-    GLView * glView = new GLView([=] (GLView * newGlView) mutable
+    // Spheres
+    std::vector<dwg::Sphere> spheres = getSceneSpheres();
+    size_t numSpheres = spheres.size();
+    std::vector<float> fSpheres;
+
+    for(size_t i =0 ; i < spheres.size(); i++)
+    {
+        const dwg::Sphere &sphere = spheres[i];
+
+        fSpheres.push_back(sphere.position.x); // Position
+        fSpheres.push_back(sphere.position.y);
+        fSpheres.push_back(sphere.position.z);
+        fSpheres.push_back(sphere.radius); // Radius
+
+        fSpheres.push_back(sphere.color.r); // Color
+        fSpheres.push_back(sphere.color.g);
+        fSpheres.push_back(sphere.color.b);
+        fSpheres.push_back(1.0f);
+    }
+
+    // Planes
+    std::vector<dwg::Plane> planes = getScenePlanes();
+    size_t numPlanes = planes.size();
+    std::vector<float> fPlanes;
+
+    // We send 16 float to make memory aligned
+    for(size_t i =0 ; i < numPlanes; i++)
+    {
+        const dwg::Plane &plane = planes[i];
+        fPlanes.push_back(plane.position.x); // Pos
+        fPlanes.push_back(plane.position.y);
+        fPlanes.push_back(plane.position.z);
+        fPlanes.push_back(0.0f);
+        fPlanes.push_back(plane.pointA.x); // PA
+        fPlanes.push_back(plane.pointA.y);
+        fPlanes.push_back(plane.pointA.z);
+        fPlanes.push_back(0.0f);
+        fPlanes.push_back(plane.pointB.x); // PB
+        fPlanes.push_back(plane.pointB.y);
+        fPlanes.push_back(plane.pointB.z);
+        fPlanes.push_back(0.0f);
+        fPlanes.push_back(plane.color.r);  // Color
+        fPlanes.push_back(plane.color.g);
+        fPlanes.push_back(plane.color.b);
+        fPlanes.push_back(1.0f);
+    }
+
+
+    // Lights
+
+    auto lights = getSceneLights();
+    size_t numLights = lights.size();
+    std::vector<float> fLights;
+
+    for(size_t i =0 ; i < lights.size(); i++)
+    {
+        const dwg::Light &light = lights[i];
+        fLights.push_back(light.position.x);
+        fLights.push_back(light.position.y);
+        fLights.push_back(light.position.z);
+        fLights.push_back(0.0f);
+
+        fLights.push_back(light.color.r);
+        fLights.push_back(light.color.g);
+        fLights.push_back(light.color.b);
+        fLights.push_back(1.0f);
+    }
+
+    _glView = new GLView([=] (GLView * newGlView) mutable
     {
         if(clContext->createContextWithOpengl())
         {
             std::cout << "Successfully created OpenCL context with OpenGL" << std::endl;
         }
 
-        auto textureId = newGlView->createTexture(textureWidth, textureHeight);
-        auto bufferId = clContext->shareGLTexture(textureId, BufferType::WRITE_ONLY);
-
-        *textureToUpId = bufferId;
-        *glTexId = textureId;
+        _glTexture = newGlView->createTexture(textureWidth, textureHeight);
+        _sharedTextureBufferId = clContext->shareGLTexture(_glTexture, BufferType::WRITE_ONLY);
 
         QFile kernelSourceFile(":/cl_files/raytracing.cl");
 
@@ -54,20 +253,25 @@ MainWindow::MainWindow(QWidget *parent)
             return;
         }
 
+        _spheresBufferId = clContext->createBuffer(sizeof(float)*8*numSpheres, fSpheres.data(), BufferType::READ_ONLY);
+        _planesBufferId = clContext->createBuffer(sizeof(float)*16*numPlanes, fPlanes.data(), BufferType::READ_ONLY);
+        _lightsBufferId = clContext->createBuffer(sizeof(float)*8*numLights, fLights.data(), BufferType::READ_ONLY);
+
+
         clContext->createProgramFromSource(clSource.toStdString());
-        clContext->prepareKernel("testKernel");
-        clContext->prepareKernel("testTexture");
         clContext->prepareKernel("rayTracing");
     });
 
 
-    glView->setFixedSize(textureWidth, textureHeight);
+    _glView->setFixedSize(textureWidth, textureHeight);
 
-    QPushButton *drawButton = new QPushButton("Draw");
-    QObject::connect(drawButton, &QPushButton::clicked,[=]
+    _drawButton = new QPushButton("Draw");
+    QObject::connect(_drawButton, &QPushButton::clicked,[=]
     {
-        glView->context()->makeCurrent(nullptr);
-        glView->setBaseTexture(*glTexId);
+
+        util::Timer t;
+        _glView->makeCurrent();
+        _glView->setBaseTexture(_glTexture);
 
         NDRange range;
         range.workDim = 2;
@@ -78,146 +282,53 @@ MainWindow::MainWindow(QWidget *parent)
         range.localSize[0] = 16;
         range.localSize[1] = 12;
 
-        BufferId bid = *(textureToUpId.get());
-
-
-        std::vector<dwg::Sphere> spheres;
-
-        dwg::Sphere s;
-
-        // Light blue
-        s.position = glm::vec3(5,0,18);
-        s.radius = 5.0f;
-        s.color =  glm::vec3(0.5,0.5,1);
-        spheres.push_back(s);
-
-        // purple
-        s.position = glm::vec3(-5,-3,20);
-        s.radius = 2.0f;
-        s.color = glm::vec3(1,0,1);
-        spheres.push_back(s);
-
-        // blue
-        s.position = glm::vec3(-10,0,25.0f);
-        s.radius = 2.0f;
-        s.color = glm::vec3(0,0,1);
-        spheres.push_back(s);
-
-
-        // green
-        s.position = glm::vec3(5,-4,4.0f);
-        s.radius = 1.0f;
-        s.color = glm::vec3(0,1,0);
-        spheres.push_back(s);
-
-        // Red
-        s.position = glm::vec3(1,-3,5.0f);
-        s.radius = 2.0f;
-        s.color = glm::vec3(1,0,0);
-        spheres.push_back(s);
-
-        // Red
-        s.position = glm::vec3(-5,-3.5,5.0f);
-        s.radius = 2.0f;
-        s.color = glm::vec3(1,1,1);
-        spheres.push_back(s);
-
-        // Yellow
-        s.position = glm::vec3(-5,-3.5,5.0f);
-        s.radius = 1.7f;
-        s.color = glm::vec3(1,1,0);
-        spheres.push_back(s);
-
-        float *fSphere = new float[spheres.size()];
-        float *fColorSphere = new float[spheres.size()];
-
-        for(int i =0 ; i  < spheres.size(); i++)
+        clContext->executeSafeAndSyncronized(&_sharedTextureBufferId, 1, [=] () mutable
         {
-            dwg::Sphere sphere = spheres[i];
-            fSphere[i*4+0] = sphere.position.x;
-            fSphere[i*4+1] = sphere.position.y;
-            fSphere[i*4+2] = sphere.position.z;
-            fSphere[i*4+3] = sphere.radius;
-
-            fColorSphere[i*3+0] = sphere.color.r;
-            fColorSphere[i*3+1] = sphere.color.g;
-            fColorSphere[i*3+2] = sphere.color.b;
-        }
-
-        size_t numSpheres = spheres.size();
-
-        clContext->executeSafeAndSyncronized(&bid, 1, [=] ()
-        {
-            BufferId newBid = bid;
             KernelArg imageArg;
-            imageArg.data = static_cast<void*>(&newBid);
+            imageArg.data = static_cast<void*>(&_sharedTextureBufferId);
             imageArg.type = KernelArgType::OPENGL;
 
-            KernelArg sphereArg;
-            auto sphereId = clContext->createBuffer(sizeof(float)*4*numSpheres, fSphere, BufferType::READ_ONLY);
-            sphereArg.data = &sphereId;
-            sphereArg.type = KernelArgType::GLOBAL;
+            // Spheres
+            KernelArg sphereArg(&_spheresBufferId, KernelArgType::GLOBAL);
+            KernelArg numSpheresArg(&numSpheres);
 
-            KernelArg sphereColorArg;
-            auto colorsSphereId = clContext->createBuffer(sizeof(float)*3*numSpheres, fColorSphere, BufferType::READ_ONLY);
-            sphereColorArg.data = &colorsSphereId;
-            sphereColorArg.type = KernelArgType::GLOBAL;
+            // Planes
+            KernelArg planesArg(&_planesBufferId, KernelArgType::GLOBAL);
+            KernelArg numPlanesArg(&numPlanes);
 
-            KernelArg numSpheresArg;
-            int *numSpheresPtr = new int;
-            *numSpheresPtr = static_cast<int>(numSpheres);
-            numSpheresArg.data = numSpheresPtr;
-            numSpheresArg.type = KernelArgType::CONSTANT;
-            numSpheresArg.byteSize = sizeof(int);
+            // Lights
+            KernelArg lightsArg(&_lightsBufferId,KernelArgType::GLOBAL);
+            KernelArg lightCountArg(&numLights);
 
-            KernelArg eyeXArg;
-            float *eyeX = new float;
-            *eyeX = 0.0f;
-            eyeXArg.data = eyeX;
-            eyeXArg.type = KernelArgType::CONSTANT;
-            eyeXArg.byteSize = sizeof(float);
+            // Camera
+            glm::vec3 eye(0,0, -30.0f);
 
-            KernelArg eyeYArg;
-            float *eyeY = new float;
-            *eyeY = 0.0f;
-            eyeYArg.data = eyeY;
-            eyeYArg.type = KernelArgType::CONSTANT;
-            eyeYArg.byteSize = sizeof(float);
+            KernelArg eyeXArg(&eye.x);
+            KernelArg eyeYArg(&eye.y);
+            KernelArg eyeZArg(&eye.z);
 
-            KernelArg eyeZArg;
-            float *eyeZ = new float;
-            *eyeZ = 0.0f;
-            eyeZArg.data = eyeZ;
-            eyeZArg.type = KernelArgType::CONSTANT;
-            eyeZArg.byteSize = sizeof(float);
-
-            KernelArg widthArg;
-            int *width = new int;
-            *width = textureWidth;
-            widthArg.data = width;
-            widthArg.type = KernelArgType::CONSTANT;
-            widthArg.byteSize = sizeof(int);
-
-            KernelArg heightArg;
-            int *height = new int;
-            *height = textureHeight;
-            heightArg.data = height;
-            heightArg.type = KernelArgType::CONSTANT;
-            heightArg.byteSize = sizeof(int);
+            // Image dimension
+            KernelArg widthArg(&textureWidth);
+            KernelArg heightArg(&textureHeight);
 
             std::cout << "Before dispatch " << std::endl;
 
-
-            clContext->dispatchKernel("rayTracing", range, {imageArg, sphereArg, sphereColorArg, numSpheresArg, eyeXArg, eyeYArg, eyeZArg, widthArg, heightArg});
+            clContext->dispatchKernel("rayTracing", range, {imageArg,
+                                                            sphereArg, numSpheresArg,
+                                                            planesArg, numPlanesArg,
+                                                            lightsArg, lightCountArg,
+                                                            eyeXArg, eyeYArg, eyeZArg,
+                                                            widthArg, heightArg});
         });
 
-        glView->context()->doneCurrent();
+        _glView->doneCurrent();
 
-        glView->repaint();
+        _glView->repaint();
+        std::cout << t.elapsedMilliSec() << std::endl;
     });
 
-    hlayout->addWidget(glView);
-    hlayout->addWidget(drawButton);
+    hlayout->addWidget(_glView);
+    hlayout->addWidget(_drawButton);
 
     setLayout(hlayout);
 }
@@ -225,73 +336,4 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
 
-}
-
-void MainWindow::_testOpenCL()
-{
-    // Check available platforms
-    std::cout << "Platforms: " << std::endl;
-    auto listOfPlatform = CLContextWrapper::listAvailablePlatforms();
-    for(auto str : listOfPlatform)
-    {
-        std::cout << str << std::endl;
-    }
-
-    // Dummy Test
-    // Create a array with sequential items and sum +1 to every item in a new array
-    QFile kernelSourceFile(":/cl_files/raytracing.cl");
-
-    if(!kernelSourceFile.open(QIODevice::Text | QIODevice::ReadOnly))
-    {
-        std::cout << "Failed to load cl file" << std::endl;
-        return;
-    }
-    QTextStream vertexTextStream(&kernelSourceFile);
-    QString clSource = vertexTextStream.readAll();
-
-    CLContextWrapper context;
-    context.createContext(DeviceType::CPU_DEVICE);
-
-    if(!context.hasCreatedContext())
-    {
-        return;
-    }
-
-    context.createProgramFromSource(clSource.toStdString());
-    context.prepareKernel("testKernel");
-
-    // Watch out to do not surpass max work group size
-    const size_t ITEMS_TO_TEST = 32;
-    int a1[ITEMS_TO_TEST], a2[ITEMS_TO_TEST];
-
-    for(size_t i = 0 ; i < ITEMS_TO_TEST ;i++)
-    {
-        a1[i] = static_cast<int>(i);
-    }
-
-    auto id1 = context.createBuffer(sizeof(int)*ITEMS_TO_TEST, a1, BufferType::READ_AND_WRITE);
-    auto id2 = context.createBuffer(sizeof(int)*ITEMS_TO_TEST, nullptr, BufferType::READ_AND_WRITE);
-
-    NDRange range;
-    range.workDim = 1;
-    range.globalOffset[0] = 0;
-    range.globalSize[0] = ITEMS_TO_TEST;
-    range.localSize[0] = ITEMS_TO_TEST;
-
-    KernelArg arg1;
-    arg1.data = &id1;
-    arg1.type = KernelArgType::GLOBAL;
-
-    KernelArg arg2;
-    arg2.data = &id2;
-    arg2.type = KernelArgType::GLOBAL;
-
-    context.dispatchKernel("testKernel", range, {arg1, arg2});
-
-    context.dowloadArrayFromBuffer(id2, ITEMS_TO_TEST, a2);
-
-    for(size_t i = 0 ; i < ITEMS_TO_TEST ;i++)
-    {
-        std::cout << a1[i] << " " << a2[i]<< std::endl;
-    }
 }
