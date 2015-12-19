@@ -8,6 +8,9 @@
 #include <memory>
 #include <glview.h>
 
+#include <glm/glm.hpp>
+#include <QTimer>
+
 class MainWindow : public QWidget
 {
     Q_OBJECT
@@ -18,22 +21,25 @@ public:
     ~MainWindow();
 
 private:
-    void _testOpenCL();
+    void _updateWithCL();
     std::shared_ptr<CLContextWrapper> clContext;
     unsigned int _glTexture;
     BufferId _sharedTextureBufferId;
 
     BufferId _spheresBufferId;
-    BufferId _spheresColorsBufferId;
+    size_t _numSpheres;
 
     BufferId _planesBufferId;
-    BufferId _planesColorsBufferId;
+    size_t _numPlanes;
 
     BufferId _lightsBufferId;
-    BufferId _lightsColorsBufferId;
+    size_t _numLights;
 
+    glm::vec3 _eye;
 
     QPointer<GLView> _glView;
     QPointer<QPushButton> _drawButton;
+
+    QPointer<QTimer> _qtimer;
 
 };

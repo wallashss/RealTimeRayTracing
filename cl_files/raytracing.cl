@@ -39,6 +39,8 @@ static bool hasInterceptedPlane(float16 plane, float3 ray, float3 origin, float3
     return false;
 }
 
+
+#if 0
 static bool hasInterceptedSphere(float8 sphere, float3 ray, float3 origin, float3 * touchPoint)
 {
     float rayDirX = ray.x;
@@ -98,6 +100,70 @@ static bool hasInterceptedSphere(float8 sphere, float3 ray, float3 origin, float
     return true;
 }
 
+#else
+
+static bool solveQuadratic(const float a, const float b, const float c, float *x0, float *x1)
+{
+    float discr = b * b - 4 * a * c;
+    if (discr < 0)
+    {
+        return false;
+    }
+    else if (discr == 0)
+    {
+        *x0 = *x1 = - 0.5f * b / a;
+    }
+    else
+    {
+        float q = (b > 0) ?
+            -0.5f * (b + sqrt(discr)) :
+            -0.5f * (b - sqrt(discr));
+        *x0 = q / a;
+        *x1 = c / q;
+    }
+    if (*x0 > *x1)
+    {
+        swap(x0, x1);
+    }
+
+    return true;
+}
+
+static bool hasInterceptedSphere(float8 sphere, float3 dir, float3 orig, float3 * touchPoint)
+{
+    float t0, t1, t;
+    float3 center = sphere.lo.xyz;
+    float radius2 = sphere.lo.w*sphere.lo.w;
+    float3 L = orig - center;
+    float a = dot(dir, dir);
+    float b = 2 * dot(L, dir);
+    float c = dot(L, L) - radius2;
+    if (!solveQuadratic(a, b, c, &t0, &t1))
+    {
+        return false;
+    }
+
+    if (t0 > t1)
+    {
+        swap(&t0, &t1);
+    }
+
+    if (t0 < 0)
+    {
+        t0 = t1; // if t0 is negative, let's use t1 instead
+        if (t0 < 0)
+        {
+            return false; // both t0 and t1 are negative
+        }
+    }
+
+    t = t0;
+    *touchPoint = orig + (dir*(float)t);
+    return true;
+}
+
+#endif
+
 static float3 reflect(float3 I, float3 N)
 {
     return I - 2.0f * dot(N, I) * N;
@@ -139,7 +205,8 @@ static float4 traceRay(float3 eye,
                        __global float * planes,
                        int numPlanes,
                        __global float * lights,
-                       int numLights)
+                       int numLights,
+                       __local float * temp)
 {
     float4 outColor = (float4)(0.0f,0.0f,0.0f,1.0f);
     bool hasHit = false;
@@ -147,13 +214,23 @@ static float4 traceRay(float3 eye,
     float3 normal;
     float minDist = 10e7f;
     float3 touchPoint;
-    float8 sphere;
-    float16 plane;
     float4 objectColor;
+
+
+    int x = get_local_id(0);
+    int y = get_local_id(1);
+    int localIdx = x * get_local_size(1) + y;
+
+    if(localIdx < numSpheres)
+    {
+        float8 tempSphere = vload8(localIdx, spheres);
+        vstore8(tempSphere, localIdx, temp);
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
 
     for(int i = 0 ; i < numSpheres ; i++)
     {
-        sphere = vload8(i, spheres);
+        float8 sphere = vload8(i, temp);
 
         if(hasInterceptedSphere(sphere, ray, eye, &touchPoint))
         {
@@ -170,9 +247,17 @@ static float4 traceRay(float3 eye,
         }
     }
 
+    barrier(CLK_LOCAL_MEM_FENCE);
+    if(localIdx < numSpheres)
+    {
+        float16 tempPlanes = vload16(localIdx, planes);
+        vstore16(tempPlanes, localIdx, temp);
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
     for(int i = 0 ; i < numPlanes ; i++)
     {
-        plane = vload16(i, planes);
+        float16 plane = vload16(i, temp);
         if(hasInterceptedPlane(plane, ray, eye, &touchPoint))
         {
             float dist = fast_distance(touchPoint, eye);
@@ -188,11 +273,19 @@ static float4 traceRay(float3 eye,
         }
     }
 
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if(localIdx < numLights)
+    {
+        float8 tempLight = vload8(localIdx, lights);
+        vstore8(tempLight, localIdx, temp);
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
     if(hasHit)
     {
         for(int i = 0 ; i < numLights; i++)
         {
-            float8 light = vload8(i, lights);
+            float8 light = vload8(i, temp);
             float4 lightColor = light.hi;
             float3 viewDir = eye - closestPoint;
 
@@ -211,6 +304,7 @@ __kernel void rayTracing(__write_only image2d_t texture,
                          int numPlanes,
                          __global float * lights,
                          int numLights,
+                         __local float * temp,
                          float eyeX, float eyeY, float eyeZ,
                          int width, int height)
 {
@@ -222,7 +316,7 @@ __kernel void rayTracing(__write_only image2d_t texture,
 
     float3 eye = (float3)(eyeX, eyeY, eyeZ);
 
-    float4 color = traceRay(eye, ray, spheres, numSpheres, planes, numPlanes, lights, numLights);
+    float4 color = traceRay(eye, ray, spheres, numSpheres, planes, numPlanes, lights, numLights, temp);
 
     write_imagef(texture, (int2)(x, height-y), color);
 }

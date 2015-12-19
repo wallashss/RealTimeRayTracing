@@ -68,7 +68,19 @@ struct KernelArg
     {
 
     }
+
+    KernelArg(void* aData, size_t size) : byteSize(size), data(aData)
+    {
+
+    }
+
+    static KernelArg getShared(size_t size)
+    {
+        return KernelArg(0, size);
+    }
 };
+
+
 
 typedef void * BufferId; // TODO: Make an assert to ensure cl_mem = void *
 typedef unsigned int GLTextureId;
@@ -102,13 +114,21 @@ public:
 
     bool dispatchKernel(const std::string& kernelName, NDRange range);
 
+    bool dispatchKernel(const std::string& kernelName, NDRange range, const KernelArg args ...);
+
     bool dispatchKernel(const std::string& kernelName, NDRange range, const std::vector<KernelArg>& args);
 
     bool setKernelArg(const std::string & kernelName, KernelArg args, int index);
 
     // OpenCL Buffers
 
-    BufferId createBuffer(size_t bytesSize, void * hostData = nullptr, BufferType type = BufferType::READ_AND_WRITE);
+    template <typename T>
+    BufferId createBuffer(size_t count, T * hostData = nullptr, BufferType type = BufferType::READ_AND_WRITE)
+    {
+        return createBufferWithBytes(sizeof(T)*count, hostData, type);
+    }
+
+    BufferId createBufferWithBytes(size_t bytesSize, void * hostData = nullptr, BufferType type = BufferType::READ_AND_WRITE);
 
     template <typename T>
     bool uploadArrayToBuffer(BufferId id, size_t count, T * data, size_t offset = 0,  const bool blocking = true)

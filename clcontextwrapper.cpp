@@ -2,7 +2,9 @@
 
 #include <iostream>
 #include <unordered_map>
+#include <unordered_set>
 #include <sstream>
+
 
 #if __APPLE__
 #include <OpenCL/cl.h>
@@ -52,7 +54,7 @@ struct CLContextWrapperPrivate
     cl_program          computeProgram;
 
     std::unordered_map<std::string, KernelInfo> kernels;
-    std::vector<cl_mem> buffers;
+    std::unordered_set<cl_mem> buffers;
 
     bool setKernelArg(cl_kernel kernel, KernelArg arg, int index)
     {
@@ -125,6 +127,8 @@ static std::string getError(cl_int error)
         return "Build program Failure";
     case CL_INVALID_KERNEL_NAME:
         return "Invalid Kernel Name";
+    case CL_INVALID_ARG_VALUE:
+        return "Invalid Argument Value";
     default:
     {
         std::stringstream ss;
@@ -536,6 +540,14 @@ bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange ran
     return dispatchKernel(kernelName, range, std::vector<KernelArg>());
 }
 
+bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange range, const KernelArg args ...)
+{
+    (void) kernelName;
+    (void) range;
+    (void) args;
+    return true;
+}
+
 bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange range,const std::vector<KernelArg>& args)
 {
     cl_int err = 0;
@@ -601,7 +613,7 @@ bool CLContextWrapper::setKernelArg(const std::string & kernelName, KernelArg ar
 }
 
 
-BufferId CLContextWrapper::createBuffer(size_t bytesSize, void * hostData, BufferType type)
+BufferId CLContextWrapper::createBufferWithBytes(size_t bytesSize, void * hostData, BufferType type)
 {
     cl_int err;
     cl_mem_flags flags  = getMemFlags(type);
@@ -619,7 +631,7 @@ BufferId CLContextWrapper::createBuffer(size_t bytesSize, void * hostData, Buffe
         return 0;
     }
 
-    _this->buffers.push_back(buffer);
+    _this->buffers.insert(buffer);
     return buffer;
 }
 
@@ -627,12 +639,12 @@ bool CLContextWrapper::uploadToBuffer(BufferId id, size_t bytesSize, void * data
 {
     cl_int err = 0;
 
-//    auto it = _this->buffers.find(id);
-//    if(it == _this->buffers.end())
-//    {
-//        std::cout << "Error: Buffer Id not created" << std::endl;
-//        return false;
-//    }
+    auto it = _this->buffers.find(static_cast<cl_mem>(id));
+    if(it == _this->buffers.end())
+    {
+        std::cout << "Error: Buffer Id not created" << std::endl;
+        return false;
+    }
 
     err = clEnqueueWriteBuffer(_this->commandQueue,
                                static_cast<cl_mem>(id),
@@ -656,12 +668,12 @@ bool CLContextWrapper::dowloadFromBuffer(BufferId id, size_t bytesSize, void * d
 {
     cl_int err = 0;
 
-//    auto it = _this->buffers.find(id);
-//    if(it == _this->buffers.end())
-//    {
-//        std::cout << "Error: Buffer Id not created" << std::endl;
-//        return false;
-//    }
+    auto it = _this->buffers.find(static_cast<cl_mem>(id));
+    if(it == _this->buffers.end())
+    {
+        std::cout << "Error: Buffer Id not created" << std::endl;
+        return false;
+    }
 
     err = clEnqueueReadBuffer(_this->commandQueue,
                               static_cast<cl_mem>(id),
@@ -694,7 +706,7 @@ BufferId CLContextWrapper::shareGLTexture(const GLTextureId textureId, BufferTyp
         return 0;
     }
 
-    _this->buffers.push_back(mem);
+    _this->buffers.insert(mem);
 
     return mem;
 
