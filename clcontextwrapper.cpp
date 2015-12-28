@@ -596,7 +596,7 @@ bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange ran
         return false;
     }
 
-    std::cout << "Successfully dispatched kernel \"" << kernelName <<"\"" << std::endl;
+//    std::cout << "Successfully dispatched kernel \"" << kernelName <<"\"" << std::endl;
     return true;
 }
 

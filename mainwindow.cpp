@@ -2,6 +2,7 @@
 
 #include <glview.h>
 #include <drawables.hpp>
+#include <scene.hpp>
 
 #include <QBoxLayout>
 #include <QFile>
@@ -16,147 +17,12 @@
 
 static int textureWidth = 640;
 static int textureHeight = 480;
+static const glm::vec3 ORIGINAL_EYE(0,0,-30);
 
-
-std::vector<dwg::Sphere> inline getSceneSpheres()
-{
-    std::vector<dwg::Sphere> spheres;
-    dwg::Sphere s;
-
-    // Light blue
-    s.position = glm::vec3(5,0,18);
-    s.radius = 5.0f;
-    s.color =  glm::vec3(0.5,0.5,1);
-    spheres.push_back(s);
-
-    // purple
-    s.position = glm::vec3(-5,-3,20);
-    s.radius = 2.0f;
-    s.color = glm::vec3(1,0,1);
-    spheres.push_back(s);
-
-    // blue
-    s.position = glm::vec3(-10,0,25.0f);
-    s.radius = 5.0f;
-    s.color = glm::vec3(0,0,1);
-    spheres.push_back(s);
-
-    // green
-    s.position = glm::vec3(5,-4,4.0f);
-    s.radius = 1.0f;
-    s.color = glm::vec3(0,1,0);
-    spheres.push_back(s);
-
-    // Red
-    s.position = glm::vec3(1,-3,5.0f);
-    s.radius = 2.0f;
-    s.color = glm::vec3(1,0,0);
-    spheres.push_back(s);
-
-    // Transparent
-    s.position = glm::vec3(-5,-3.5,5.0f);
-    s.radius = 2.0f;
-    s.color = glm::vec3(1,1,1);
-    spheres.push_back(s);
-
-    // Yellow
-    s.position = glm::vec3(-1,-3.3,1.0f);
-    s.radius = 1.7f;
-    s.color = glm::vec3(1,1,0);
-    spheres.push_back(s);
-
-    return spheres;
-}
-
-std::vector<dwg::Light> inline getSceneLights()
-{
-    std::vector<dwg::Light> lights;
-    dwg::Light l;
-
-    l.position = glm::vec3(0,15,20);
-    l.color = glm::vec3(1,1,1);
-    lights.push_back(l);
-
-    l.position = glm::vec3(-10,15,40);
-    l.color = glm::vec3(1,1,1);
-    lights.push_back(l);
-
-    l.position = glm::vec3(0,5,0);
-    l.color = glm::vec3(2,2,2);
-    lights.push_back(l);
-
-    l.position = glm::vec3(0,10,0);
-    l.color = glm::vec3(1,1,1);
-    lights.push_back(l);
-
-    return lights;
-}
-
-std::vector<dwg::Plane> inline getScenePlanes()
-{
-    std::vector<dwg::Plane> planes;
-    dwg::Plane p;
-
-    p.position = glm::vec3(0,-5,0);
-    p.pointA = glm::vec3(1,-5,0);
-    p.pointB = glm::vec3(1,-5,1);
-    p.color = glm::vec3(1.0f, 1.0f, 1.0f);
-    planes.push_back(p);
-
-//    floor->color1 = Drawable::blackColor;
-//    floor->color2 = glm::vec3(1.5f,1.5f,1.5f);
-//    floor->tileSize = 2.5f;
-
-//    floor->type = Drawable::Type::REFLEXIVE;
-
-//    Plane * ceil = new Plane("ceil");
-
-    p.position = glm::vec3(0,20,0);
-    p.pointA = glm::vec3(1,20,1);
-    p.pointB = glm::vec3(1,20,0);
-    p.color = glm::vec3(0.6f,0.6f,0.6f);
-    planes.push_back(p);
-
-
-//    Plane * back = new Plane("back");
-
-    p.position = glm::vec3(0,0,50);
-    p.pointA = glm::vec3(1,0,50);
-    p.pointB = glm::vec3(1,1,50);
-    p.color = glm::vec3(.2f,0.2f,0.2f);
-    planes.push_back(p);
-//    back->specularColor = glm::vec3(2.0f,2.0f,2.0f);
-//    back->type = Drawable::Type::REFLEXIVE;
-
-//    Plane * front = new Plane("front");
-
-    p.position = glm::vec3(0,0,-10);
-    p.pointA = glm::vec3(1,1,-10);
-    p.pointB = glm::vec3(1,0,-10);
-    p.color = glm::vec3(.7f,0.7f,0.7f);
-    planes.push_back(p);
-
-//    Plane * rightWall = new Plane("rightWall");
-    p.position = glm::vec3(15,0,0);
-    p.pointA = glm::vec3(15,1,0);
-    p.pointB = glm::vec3(15,1,1);
-    p.color = glm::vec3(1,0,0);
-    planes.push_back(p);
-
-
-//    Plane * leftWall = new Plane("leftWall");
-    p.position = glm::vec3(-15,0,0);
-    p.pointA = glm::vec3(-15,1,1);
-    p.pointB = glm::vec3(-15,1,0);
-    p.color = glm::vec3(0,0,1);
-    planes.push_back(p);
-    return planes;
-}
 
 MainWindow::MainWindow(QWidget *parent)
-    : QWidget(parent), _eye(glm::vec3(0,0,-30))
+    : QWidget(parent), _eye(ORIGINAL_EYE)
 {
-
     setMinimumSize(1024, 768);
 
     QHBoxLayout * hlayout = new QHBoxLayout();
@@ -188,25 +54,25 @@ MainWindow::MainWindow(QWidget *parent)
     _numPlanes = planes.size();
     std::vector<float> fPlanes;
 
-    // We send 16 float to make memory aligned
+    // We send 16 float to align memory
     for(size_t i =0 ; i < _numPlanes; i++)
     {
         const dwg::Plane &plane = planes[i];
         fPlanes.push_back(plane.position.x); // Pos
         fPlanes.push_back(plane.position.y);
         fPlanes.push_back(plane.position.z);
-        fPlanes.push_back(0.0f);
-        fPlanes.push_back(plane.pointA.x); // PA
-        fPlanes.push_back(plane.pointA.y);
-        fPlanes.push_back(plane.pointA.z);
-        fPlanes.push_back(0.0f);
-        fPlanes.push_back(plane.pointB.x); // PB
-        fPlanes.push_back(plane.pointB.y);
-        fPlanes.push_back(plane.pointB.z);
+        fPlanes.push_back(plane.tileSize);
+        fPlanes.push_back(plane.normal.x); // Normal
+        fPlanes.push_back(plane.normal.y);
+        fPlanes.push_back(plane.normal.z);
         fPlanes.push_back(0.0f);
         fPlanes.push_back(plane.color.r);  // Color
         fPlanes.push_back(plane.color.g);
         fPlanes.push_back(plane.color.b);
+        fPlanes.push_back(1.0f);
+        fPlanes.push_back(plane.color2.r); // Color 2
+        fPlanes.push_back(plane.color2.g);
+        fPlanes.push_back(plane.color2.b);
         fPlanes.push_back(1.0f);
     }
 
@@ -271,8 +137,8 @@ MainWindow::MainWindow(QWidget *parent)
     _qtimer->setInterval(16);
     QObject::connect(_qtimer, &QTimer::timeout, [&]
     {
-
         _eye = glm::rotateY(_eye, glm::pi<float>()*0.01f);
+        std::cout << "Eye " << _eye.x << " " << _eye.y << " " << _eye.z << std::endl;
         _updateWithCL();
     });
 
@@ -281,6 +147,7 @@ MainWindow::MainWindow(QWidget *parent)
     _drawButton = new QPushButton("Draw");
     QObject::connect(_drawButton, &QPushButton::clicked,[=]
     {
+        _eye = ORIGINAL_EYE;
         _updateWithCL();
     });
 
@@ -295,10 +162,7 @@ MainWindow::MainWindow(QWidget *parent)
         {
             _qtimer->stop();
         }
-
     });
-
-
 
     hlayout->addWidget(_glView);
     hlayout->addWidget(_drawButton);
@@ -325,13 +189,15 @@ void MainWindow::_updateWithCL()
     clContext->executeSafeAndSyncronized(&_sharedTextureBufferId, 1, [=] () mutable
     {
 
-        size_t localSize = sizeof(float)*16*12*16;
+        size_t localTempSize = sizeof(float)*16*12*16;
+        size_t localLightSize = sizeof(float)*8*_numLights;
 
         clContext->dispatchKernel("rayTracing", range, {&_sharedTextureBufferId,
                                                         &_spheresBufferId, &_numSpheres,
                                                         &_planesBufferId, &_numPlanes,
                                                         &_lightsBufferId, &_numLights,
-                                                        KernelArg::getShared(localSize),
+                                                        KernelArg::getShared(localTempSize),
+                                                        KernelArg::getShared(localLightSize),
                                                         &_eye.x, &_eye.y, &_eye.z,
                                                         &textureWidth, &textureHeight});
     });

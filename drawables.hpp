@@ -17,10 +17,12 @@ struct Sphere : Drawables
     float radius;
 };
 
+// All planes are chess for definition
 struct Plane : Drawables
 {
-    glm::vec3 pointA;
-    glm::vec3 pointB;
+    float tileSize;
+    glm::vec3 normal;
+    glm::vec3 color2;
 };
 
 struct Light : Drawables

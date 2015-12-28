@@ -13,14 +13,42 @@ static float3 getNormalFromSphere(float8 sphere, float3 position)
     return normalize((float3)(position.x -sphere.lo.x, position.y - sphere.lo.y, position.z - sphere.lo.z));
 }
 
-static float3 getNormalFromPlane(float16 plane)
+static float4 getColorFromPlane (float16 plane, float3 point)
 {
-    float3 position = plane.lo.lo.xyz;
-    float3 pointA   = plane.lo.hi.xyz;
-    float3 pointB   = plane.hi.lo.xyz;
-    return normalize(cross(pointA - position, pointB -position));
+    float tileSize = plane.lo.lo.w;
+    int xt =(int)round(point.x /tileSize);
+    int yt =(int)round(point.z /tileSize);
+
+    bool evenX = xt % 2 == 0;
+    bool evenY = yt % 2 == 0;
+
+    if(evenX && evenY)
+    {
+        return plane.hi.lo;
+    }
+    else if(!evenX && evenY)
+    {
+        return plane.hi.hi;
+    }
+    else if(evenX && !evenY)
+    {
+        return plane.hi.hi;
+
+    }
+    else if(!evenX && !evenY)
+    {
+        return plane.hi.lo;
+    }
+    else
+    {
+        return plane.hi.hi;
+    }
 }
 
+static float3 getNormalFromPlane(float16 plane)
+{
+    return plane.lo.hi.xyz;
+}
 
 static bool hasInterceptedPlane(float16 plane, float3 ray, float3 origin, float3 * touchPoint)
 {
@@ -173,15 +201,10 @@ static float4 phong(float3 viewDir, float3 position, float3 normal, float4 diffu
 {
     float4 outColor = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
     float3 lightDir = normalize( light - position);
-    float lightDistance = 1.0f;//distance(light, position);
+    float lightDistance = fast_distance(light, position);
 
-    float quadraticAttenuation = 1.0f;
-    float linearAttenuation    = 1.0f;
-    float constantAttenuation  = 1.0f;
-    float attenuation = 1.0f / (constantAttenuation
-                             + linearAttenuation * lightDistance
-                             + quadraticAttenuation * lightDistance * lightDistance);
-
+    float k = 0.005f;
+    float attenuation = 1.0f / (1.0f + k * lightDistance * lightDistance);
 
      float4 ambientColor = (float4)(0.1f, 0.1f, 0.1f, 0.1f) * lightColor * diffuseColor;
      float diff = max(0.0f, dot(normal,lightDir));
@@ -193,9 +216,8 @@ static float4 phong(float3 viewDir, float3 position, float3 normal, float4 diffu
      specular = pow(specular,50);
 
      outColor += ambientColor;
-     outColor += diffuseColor*diff;
-     outColor += lightColor*specular*attenuation; // * drawableSpecular
-    return outColor;
+     outColor += (diffuseColor*diff + lightColor*specular) * attenuation;
+     return outColor;
 }
 
 static float4 traceRay(float3 eye,
@@ -206,7 +228,8 @@ static float4 traceRay(float3 eye,
                        int numPlanes,
                        __global float * lights,
                        int numLights,
-                       __local float * temp)
+                       __local float * temp,
+                       __local float * temp2)
 {
     float4 outColor = (float4)(0.0f,0.0f,0.0f,1.0f);
     bool hasHit = false;
@@ -215,19 +238,60 @@ static float4 traceRay(float3 eye,
     float minDist = 10e7f;
     float3 touchPoint;
     float4 objectColor;
+    int sphereIdx = -1;
 
 
+    // Local index to load local memory
     int x = get_local_id(0);
     int y = get_local_id(1);
     int localIdx = x * get_local_size(1) + y;
 
+    // Load planes to local memory
+    if(localIdx < numPlanes)
+    {
+        float16 tempPlanes = vload16(localIdx, planes);
+        vstore16(tempPlanes, localIdx, temp);
+    }
+    barrier(CLK_LOCAL_MEM_FENCE); // wait fo planes loading
+
+    // Check for planes intersection
+    for(int i = 0 ; i < numPlanes ; i++)
+    {
+        float16 plane = vload16(i, temp);
+        if(hasInterceptedPlane(plane, ray, eye, &touchPoint))
+        {
+            float dist = fast_distance(touchPoint, eye);
+            if(dist < minDist)
+            {
+                minDist = dist;
+                closestPoint = touchPoint;
+
+                float tileSize = plane.lo.lo.w;
+                if(isnotequal(tileSize, 0.0f))
+                {
+                    objectColor = getColorFromPlane(plane, closestPoint);
+                }
+                else
+                {
+                    objectColor = plane.hi.lo;
+                }
+
+                normal = getNormalFromPlane(plane);
+                hasHit = true;
+            }
+        }
+    }
+    barrier(CLK_LOCAL_MEM_FENCE); // we may be accessing planes in local memory
+
+    // Load spheres to local memory
     if(localIdx < numSpheres)
     {
         float8 tempSphere = vload8(localIdx, spheres);
         vstore8(tempSphere, localIdx, temp);
     }
-    barrier(CLK_LOCAL_MEM_FENCE);
+    barrier(CLK_LOCAL_MEM_FENCE); // wait for spheres loading
 
+    // Check for spheres intersection
     for(int i = 0 ; i < numSpheres ; i++)
     {
         float8 sphere = vload8(i, temp);
@@ -243,54 +307,60 @@ static float4 traceRay(float3 eye,
                 objectColor = sphere.hi;
                 normal = getNormalFromSphere(sphere, touchPoint);
                 hasHit = true;
+                sphereIdx = i;
             }
         }
     }
 
-    barrier(CLK_LOCAL_MEM_FENCE);
-    if(localIdx < numSpheres)
-    {
-        float16 tempPlanes = vload16(localIdx, planes);
-        vstore16(tempPlanes, localIdx, temp);
-    }
-    barrier(CLK_LOCAL_MEM_FENCE);
 
-    for(int i = 0 ; i < numPlanes ; i++)
-    {
-        float16 plane = vload16(i, temp);
-        if(hasInterceptedPlane(plane, ray, eye, &touchPoint))
-        {
-            float dist = fast_distance(touchPoint, eye);
-            if(dist < minDist)
-            {
-                minDist = dist;
-                closestPoint = touchPoint;
-
-                objectColor = plane.hi.hi;
-                normal = getNormalFromPlane(plane);
-                hasHit = true;
-            }
-        }
-    }
-
-    barrier(CLK_LOCAL_MEM_FENCE);
-
+    // Load lights to local memory
     if(localIdx < numLights)
     {
         float8 tempLight = vload8(localIdx, lights);
-        vstore8(tempLight, localIdx, temp);
+        vstore8(tempLight, localIdx, temp2);
     }
-    barrier(CLK_LOCAL_MEM_FENCE);
+    barrier(CLK_LOCAL_MEM_FENCE); // wait for lights loading
+
+    // Calculate color
     if(hasHit)
     {
         for(int i = 0 ; i < numLights; i++)
         {
-            float8 light = vload8(i, temp);
+            float8 light = vload8(i, temp2);
+            float3 lightPos = light.lo.xyz;
             float4 lightColor = light.hi;
-            float3 viewDir = eye - closestPoint;
 
-            float4 phongColor = phong(viewDir, closestPoint, normal, objectColor, light.lo.xyz, lightColor);
-            outColor += phongColor;
+
+            // Check if point is occluded (shadow) only for spheres
+            float3 lightDir = lightPos - closestPoint;
+            bool isInShadow = false;
+
+            for(int i = 0 ; i < numSpheres ; i++)
+            {
+                float8 sphere = vload8(i, temp);
+                float3 occludedPoint;
+
+                if(sphereIdx != i)
+                {
+                    if(hasInterceptedSphere(sphere, lightDir, closestPoint, &occludedPoint))
+                    {
+                        if(fast_distance(occludedPoint, lightPos) < fast_distance(lightPos, closestPoint))
+                        {
+                            isInShadow = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Calculate phong color if point is not in shadow
+            if(!isInShadow)
+            {
+                float3 viewDir = eye - closestPoint;
+                float4 phongColor = phong(viewDir, closestPoint, normal, objectColor, light.lo.xyz, lightColor);
+                outColor += phongColor;
+            }
+
         }
     }
     return outColor;
@@ -299,24 +369,42 @@ static float4 traceRay(float3 eye,
 
 __kernel void rayTracing(__write_only image2d_t texture,
                          __global float * spheres,
-                         int numSpheres,
+                         const int numSpheres,
                          __global float * planes,
-                         int numPlanes,
+                         const int numPlanes,
                          __global float * lights,
-                         int numLights,
+                         const int numLights,
                          __local float * temp,
-                         float eyeX, float eyeY, float eyeZ,
-                         int width, int height)
+                         __local float * temp2,
+                         const float eyeX, const float eyeY, const float eyeZ,
+                         const int width, const int height)
 {
+    // Ray Setup
     int x = get_global_id(0);
     int y = get_global_id(1);
 
-    float3 ray = (float3)(x-width/2,height/2-y,1000);
-    ray = normalize(ray);
+    float3 eye    = (float3)(eyeX, eyeY, eyeZ);
+    float3 center = (float3)(0, 0.0f, 0);
+    float3 up     = (float3)(0, 1.0f, 0);
 
-    float3 eye = (float3)(eyeX, eyeY, eyeZ);
+    float3 dir   = normalize(center - eye) ;
+    float3 right = normalize(cross(up, dir));
 
-    float4 color = traceRay(eye, ray, spheres, numSpheres, planes, numPlanes, lights, numLights, temp);
+    float3 origin = eye -  (dir * 1000.0f) ;
 
+    float3 pixelPos = eye + (x-width/2) * right + (height/2-y) * up;
+    float3 ray = normalize(pixelPos - origin) ;
+
+    // Raytracing!
+    float4 color = traceRay(eye, ray, spheres, numSpheres, planes, numPlanes, lights, numLights, temp, temp2);
+
+    // Gamma correction
+    float3 gamma = (float3)(1.0f/2.2f, 1.0f/2.2f, 1.0f/2.2f);
+    color = (float4)( pow(color.x, gamma.x),
+                      pow(color.y, gamma.y),
+                      pow(color.z, gamma.z),
+                      color.w);
+
+    // Write to texture
     write_imagef(texture, (int2)(x, height-y), color);
 }
