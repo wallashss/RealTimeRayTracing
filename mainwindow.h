@@ -35,6 +35,9 @@ private:
     BufferId _lightsBufferId;
     size_t _numLights;
 
+    BufferId _raysBufferId;
+    BufferId _pixelsBufferId;
+
     glm::vec3 _eye;
 
     QPointer<GLView> _glView;

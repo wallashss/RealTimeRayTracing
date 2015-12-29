@@ -6,7 +6,7 @@ namespace dwg
 {
 struct Drawables
 {
-    glm::vec3 color;
+    glm::vec4 color;
     glm::vec3 position;
 };
 
@@ -22,7 +22,7 @@ struct Plane : Drawables
 {
     float tileSize;
     glm::vec3 normal;
-    glm::vec3 color2;
+    glm::vec4 color2;
 };
 
 struct Light : Drawables

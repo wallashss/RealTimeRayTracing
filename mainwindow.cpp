@@ -2,7 +2,7 @@
 
 #include <glview.h>
 #include <drawables.hpp>
-#include <scene.hpp>
+#include <scene.h>
 
 #include <QBoxLayout>
 #include <QFile>
@@ -17,7 +17,11 @@
 
 static int textureWidth = 640;
 static int textureHeight = 480;
-static const glm::vec3 ORIGINAL_EYE(0,0,-30);
+
+static int localSizeX = 16;
+static int localSizeY = 16;
+
+static const glm::vec3 ORIGINAL_EYE(0,0,-40);
 
 
 MainWindow::MainWindow(QWidget *parent)
@@ -46,7 +50,7 @@ MainWindow::MainWindow(QWidget *parent)
         fSpheres.push_back(sphere.color.r); // Color
         fSpheres.push_back(sphere.color.g);
         fSpheres.push_back(sphere.color.b);
-        fSpheres.push_back(1.0f);
+        fSpheres.push_back(sphere.color.w);
     }
 
     // Planes
@@ -69,11 +73,11 @@ MainWindow::MainWindow(QWidget *parent)
         fPlanes.push_back(plane.color.r);  // Color
         fPlanes.push_back(plane.color.g);
         fPlanes.push_back(plane.color.b);
-        fPlanes.push_back(1.0f);
+        fPlanes.push_back(plane.color.a);
         fPlanes.push_back(plane.color2.r); // Color 2
         fPlanes.push_back(plane.color2.g);
         fPlanes.push_back(plane.color2.b);
-        fPlanes.push_back(1.0f);
+        fPlanes.push_back(plane.color.a);
     }
 
 
@@ -123,14 +127,13 @@ MainWindow::MainWindow(QWidget *parent)
         }
 
         _spheresBufferId = clContext->createBuffer(fSpheres.size(), fSpheres.data(), BufferType::READ_ONLY);
-        _planesBufferId = clContext->createBuffer(fPlanes.size(), fPlanes.data(), BufferType::READ_ONLY);
-        _lightsBufferId = clContext->createBuffer(fLights.size(), fLights.data(), BufferType::READ_ONLY);
-
+        _planesBufferId  = clContext->createBuffer(fPlanes.size(), fPlanes.data(), BufferType::READ_ONLY);
+        _lightsBufferId  = clContext->createBuffer(fLights.size(), fLights.data(), BufferType::READ_ONLY);
+        _raysBufferId    = clContext->createBufferWithBytes(16*16*4*2*sizeof(float), nullptr, BufferType::READ_AND_WRITE);
+        _pixelsBufferId  = clContext->createBufferWithBytes(16*16*2*sizeof(int), nullptr, BufferType::READ_AND_WRITE);
 
         clContext->createProgramFromSource(clSource.toStdString());
         clContext->prepareKernel("rayTracing");
-
-
     });
 
     _qtimer = new QTimer(this);
@@ -138,7 +141,6 @@ MainWindow::MainWindow(QWidget *parent)
     QObject::connect(_qtimer, &QTimer::timeout, [&]
     {
         _eye = glm::rotateY(_eye, glm::pi<float>()*0.01f);
-        std::cout << "Eye " << _eye.x << " " << _eye.y << " " << _eye.z << std::endl;
         _updateWithCL();
     });
 
@@ -183,13 +185,12 @@ void MainWindow::_updateWithCL()
     range.globalOffset[1] = 0;
     range.globalSize[0] = 640;
     range.globalSize[1] = 480;
-    range.localSize[0] = 16;
-    range.localSize[1] = 12;
+    range.localSize[0] = localSizeX;
+    range.localSize[1] = localSizeY;
 
     clContext->executeSafeAndSyncronized(&_sharedTextureBufferId, 1, [=] () mutable
     {
-
-        size_t localTempSize = sizeof(float)*16*12*16;
+        size_t localTempSize = sizeof(float)*16*localSizeX*localSizeY;
         size_t localLightSize = sizeof(float)*8*_numLights;
 
         clContext->dispatchKernel("rayTracing", range, {&_sharedTextureBufferId,
@@ -208,11 +209,11 @@ void MainWindow::_updateWithCL()
     float elapsedTime = t.elapsedMilliSec();
     setWindowTitle(QString::fromStdString("Rendered: ") + QString::fromStdString(std::to_string(elapsedTime)) + QString(" ms") +
                    QString(" (") + QString::fromStdString(std::to_string((1.0f/elapsedTime)*1e3f)) + QString(" FPS)"));
-    std::cout << "Raytracing time: "<< t.elapsedMilliSec();
+//    std::cout << "Raytracing time: "<< t.elapsedMilliSec();
     t.restart();
 
 
-    std::cout << " Rendering time: "<< elapsedTime << std::endl;
+//    std::cout << " Rendering time: "<< elapsedTime << std::endl;
 
 }
 
