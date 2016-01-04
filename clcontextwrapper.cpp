@@ -129,6 +129,8 @@ static std::string getError(cl_int error)
         return "Invalid Kernel Name";
     case CL_INVALID_ARG_VALUE:
         return "Invalid Argument Value";
+    case CL_INVALID_ARG_INDEX:
+        return "Invalid Argument Index";
     default:
     {
         std::stringstream ss;
@@ -540,14 +542,6 @@ bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange ran
     return dispatchKernel(kernelName, range, std::vector<KernelArg>());
 }
 
-bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange range, const KernelArg args ...)
-{
-    (void) kernelName;
-    (void) range;
-    (void) args;
-    return true;
-}
-
 bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange range,const std::vector<KernelArg>& args)
 {
     cl_int err = 0;
@@ -595,7 +589,6 @@ bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange ran
         logError("Error: Failed to dispatch kernel", getError(err));
         return false;
     }
-
 //    std::cout << "Successfully dispatched kernel \"" << kernelName <<"\"" << std::endl;
     return true;
 }
@@ -610,6 +603,11 @@ bool CLContextWrapper::setKernelArg(const std::string & kernelName, KernelArg ar
     }
 
     return _this->setKernelArg(it->second.kernel, arg, index);
+}
+
+void CLContextWrapper::finish()
+{
+    clFinish(_this->commandQueue);
 }
 
 

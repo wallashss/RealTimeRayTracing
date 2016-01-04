@@ -22,9 +22,14 @@ public:
 
 private:
     void _updateWithCL();
-    std::shared_ptr<CLContextWrapper> clContext;
+
+    void testScan();
+
+private:
+    std::shared_ptr<CLContextWrapper> _clContext;
     unsigned int _glTexture;
     BufferId _sharedTextureBufferId;
+    BufferId _tempTextureBufferId;
 
     BufferId _spheresBufferId;
     size_t _numSpheres;

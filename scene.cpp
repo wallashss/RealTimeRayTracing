@@ -92,11 +92,18 @@ std::vector<dwg::Plane> getScenePlanes()
     p.color2 = glm::vec4(0.0f, 0.0f, 0.0f, 1.2f);
     planes.push_back(p);
 
-    // Ceil
-    p.position = glm::vec3(0,20,0);
+    // Right wall
+    p.position = glm::vec3(15,0,0);
     p.tileSize  = 0.0f;
-    p.normal = glm::vec3(0, 1.0f, 0);
-    p.color = glm::vec4(0.6f,0.6f,0.6f, 0.0f);
+    p.normal = glm::vec3(1,0,0);
+    p.color = glm::vec4(1,0,0,0.0f);
+    planes.push_back(p);
+
+    // Left wall
+    p.position = glm::vec3(-15,0,0);
+    p.tileSize  = 0.0f;
+    p.normal = glm::vec3(-1,0,0);
+    p.color = glm::vec4(0,0,1,0.0f);
     planes.push_back(p);
 
     // Back
@@ -113,20 +120,13 @@ std::vector<dwg::Plane> getScenePlanes()
     p.color = glm::vec4(.7f,0.7f,0.7f, 1.2f);
     planes.push_back(p);
 
-    // Right wall
-    p.position = glm::vec3(15,0,0);
+    // Ceil
+    p.position = glm::vec3(0,20,0);
     p.tileSize  = 0.0f;
-    p.normal = glm::vec3(1,0,0);
-    p.color = glm::vec4(1,0,0,0.0f);
-
+    p.normal = glm::vec3(0, 1.0f, 0);
+    p.color = glm::vec4(0.6f,0.6f,0.6f, 0.0f);
     planes.push_back(p);
 
 
-    // Left wall
-    p.position = glm::vec3(-15,0,0);
-    p.tileSize  = 0.0f;
-    p.normal = glm::vec3(-1,0,0);
-    p.color = glm::vec4(0,0,1,0.0f);
-    planes.push_back(p);
     return planes;
 }

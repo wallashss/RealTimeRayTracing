@@ -24,6 +24,7 @@ static int localSizeY = 16;
 static const glm::vec3 ORIGINAL_EYE(0,0,-40);
 
 
+
 MainWindow::MainWindow(QWidget *parent)
     : QWidget(parent), _eye(ORIGINAL_EYE)
 {
@@ -31,7 +32,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     QHBoxLayout * hlayout = new QHBoxLayout();
 
-    clContext = std::make_shared<CLContextWrapper>();
+    _clContext = std::make_shared<CLContextWrapper>();
 
     // Spheres
     std::vector<dwg::Sphere> spheres = getSceneSpheres();
@@ -103,13 +104,15 @@ MainWindow::MainWindow(QWidget *parent)
 
     _glView = new GLView([=] (GLView * newGlView) mutable
     {
-        if(clContext->createContextWithOpengl())
+        if(_clContext->createContextWithOpengl())
         {
             std::cout << "Successfully created OpenCL context with OpenGL" << std::endl;
         }
 
         _glTexture = newGlView->createTexture(textureWidth, textureHeight);
-        _sharedTextureBufferId = clContext->shareGLTexture(_glTexture, BufferType::WRITE_ONLY);
+        _sharedTextureBufferId = _clContext->shareGLTexture(_glTexture, BufferType::WRITE_ONLY);
+
+        _tempTextureBufferId = _clContext->createBufferWithBytes(sizeof(float)*4*textureWidth*textureHeight, nullptr, BufferType::READ_AND_WRITE);
 
         QFile kernelSourceFile(":/cl_files/raytracing.cl");
 
@@ -118,22 +121,25 @@ MainWindow::MainWindow(QWidget *parent)
             std::cout << "Failed to load cl file" << std::endl;
             return;
         }
-        QTextStream vertexTextStream(&kernelSourceFile);
-        QString clSource = vertexTextStream.readAll();
+        QTextStream kernelSourceTS(&kernelSourceFile);
+        QString clSource = kernelSourceTS.readAll();
 
-        if(!clContext->hasCreatedContext())
+        if(!_clContext->hasCreatedContext())
         {
             return;
         }
 
-        _spheresBufferId = clContext->createBuffer(fSpheres.size(), fSpheres.data(), BufferType::READ_ONLY);
-        _planesBufferId  = clContext->createBuffer(fPlanes.size(), fPlanes.data(), BufferType::READ_ONLY);
-        _lightsBufferId  = clContext->createBuffer(fLights.size(), fLights.data(), BufferType::READ_ONLY);
-        _raysBufferId    = clContext->createBufferWithBytes(16*16*4*2*sizeof(float), nullptr, BufferType::READ_AND_WRITE);
-        _pixelsBufferId  = clContext->createBufferWithBytes(16*16*2*sizeof(int), nullptr, BufferType::READ_AND_WRITE);
+        _spheresBufferId = _clContext->createBuffer(fSpheres.size(), fSpheres.data(), BufferType::READ_ONLY);
+        _planesBufferId  = _clContext->createBuffer(fPlanes.size(), fPlanes.data(), BufferType::READ_ONLY);
+        _lightsBufferId  = _clContext->createBuffer(fLights.size(), fLights.data(), BufferType::READ_ONLY);
+        _raysBufferId    = _clContext->createBufferWithBytes(16*16*4*2*sizeof(float), nullptr, BufferType::READ_AND_WRITE);
+        _pixelsBufferId  = _clContext->createBufferWithBytes(16*16*2*sizeof(int), nullptr, BufferType::READ_AND_WRITE);
 
-        clContext->createProgramFromSource(clSource.toStdString());
-        clContext->prepareKernel("rayTracing");
+        _clContext->createProgramFromSource(clSource.toStdString());
+        _clContext->prepareKernel("rayTracing");
+        _clContext->prepareKernel("drawToTexture");
+        _clContext->prepareKernel("prefixSum");
+
     });
 
     _qtimer = new QTimer(this);
@@ -173,11 +179,94 @@ MainWindow::MainWindow(QWidget *parent)
     setLayout(hlayout);
 }
 
+
+
+void MainWindow::testScan()
+{
+    int localSize = 512;
+    int globalSize = 1 * localSize;
+    int totalSize = 2 * globalSize;
+
+//    typedef float VectorType;
+    typedef int VectorType;
+    std::vector<VectorType> input;
+
+    NDRange range;
+    range.workDim = 1;
+    range.globalOffset[0] = 0;
+    range.globalSize[0] = globalSize;
+    range.localSize[0] = localSize;
+
+    for (int i = 0 ; i < totalSize ; i++)
+    {
+        input.push_back(1);
+    }
+
+    auto bufferInput  = _clContext->createBuffer(input.size(), input.data(), BufferType::READ_AND_WRITE);
+    auto bufferOutput = _clContext->createBufferWithBytes(totalSize*sizeof(int), nullptr, BufferType::READ_AND_WRITE);
+
+
+    util::Timer t;
+    _clContext->dispatchKernel("prefixSum", range, {&bufferInput,
+                                                    &bufferOutput,
+                                                    KernelArg::getShared(sizeof(VectorType) * 2 * localSize),
+                                                    &localSize});
+    _clContext->finish();
+
+    static std::vector<float> times;
+    if(times.size() <= 100)
+    {
+        times.push_back(t.elapsedMilliSec());
+    }
+
+//    std::cout << t.elapsedMilliSec() << std::endl;
+
+    std::vector<VectorType> output;
+    output.resize(totalSize);
+    _clContext->dowloadArrayFromBuffer(bufferOutput, totalSize, output.data());
+
+    bool right = true;
+    VectorType sum = 0;
+    for(int i =0 ; i < output.size(); i++)
+    {
+//        std::cout << i << " " << sum << " " << output[i] ;
+        if(output[i] != sum)
+        {
+            right = false;
+//            std::cout << " << wrong ";
+        }
+//        std::cout << std::endl;
+        sum += input[i];
+    }
+
+//    std::cout << "banks" << std::endl;
+//    for(int i =0 ; i < output.size(); i++)
+//    {
+//        std::cout << i +1 << " " << output[i] << " " << output[i] - (output[i]/16) * 16 << std::endl;
+//    }
+
+
+    if(!right)
+    {
+//        std::cout << "Wrong!" << std::endl;
+    }
+    if(times.size() == 100)
+    {
+        float allTime = 0;
+        for(int i = 10 ; i < 100; i++ )
+        {
+            allTime += times[i];
+        }
+        times.clear();
+        std::cout << "Avg " << (allTime/90) << std::endl;
+    }
+
+}
+
 void MainWindow::_updateWithCL()
 {
     util::Timer t;
-    _glView->makeCurrent();
-    _glView->setBaseTexture(_glTexture);
+
 
     NDRange range;
     range.workDim = 2;
@@ -188,23 +277,38 @@ void MainWindow::_updateWithCL()
     range.localSize[0] = localSizeX;
     range.localSize[1] = localSizeY;
 
-    clContext->executeSafeAndSyncronized(&_sharedTextureBufferId, 1, [=] () mutable
-    {
-        size_t localTempSize = sizeof(float)*16*localSizeX*localSizeY;
-        size_t localLightSize = sizeof(float)*8*_numLights;
 
-        clContext->dispatchKernel("rayTracing", range, {&_sharedTextureBufferId,
-                                                        &_spheresBufferId, &_numSpheres,
-                                                        &_planesBufferId, &_numPlanes,
-                                                        &_lightsBufferId, &_numLights,
-                                                        KernelArg::getShared(localTempSize),
-                                                        KernelArg::getShared(localLightSize),
-                                                        &_eye.x, &_eye.y, &_eye.z,
-                                                        &textureWidth, &textureHeight});
+    size_t localTempSize = sizeof(float)*16*localSizeX*localSizeY;
+    size_t localLightSize = sizeof(float)*8*_numLights;
+
+    testScan();
+
+    _clContext->dispatchKernel("rayTracing", range, {&_tempTextureBufferId,
+                                                    &_spheresBufferId, &_numSpheres,
+                                                    &_planesBufferId, &_numPlanes,
+                                                    &_lightsBufferId, &_numLights,
+                                                    KernelArg::getShared(localTempSize),
+                                                    KernelArg::getShared(localLightSize),
+                                                    &_eye.x, &_eye.y, &_eye.z});
+
+
+    _glView->makeCurrent();
+    _glView->setBaseTexture(_glTexture);
+    _clContext->executeSafeAndSyncronized(&_sharedTextureBufferId, 1, [=] () mutable
+    {
+        _clContext->dispatchKernel("drawToTexture", range, {&_sharedTextureBufferId,
+                                                        &_tempTextureBufferId});
+//        clContext->dispatchKernel("rayTracing", range, {&_sharedTextureBufferId,
+//                                                        &_spheresBufferId, &_numSpheres,
+//                                                        &_planesBufferId, &_numPlanes,
+//                                                        &_lightsBufferId, &_numLights,
+//                                                        KernelArg::getShared(localTempSize),
+//                                                        KernelArg::getShared(localLightSize),
+//                                                        &_eye.x, &_eye.y, &_eye.z});
+
     });
 
     _glView->doneCurrent();
-
     _glView->repaint();
     float elapsedTime = t.elapsedMilliSec();
     setWindowTitle(QString::fromStdString("Rendered: ") + QString::fromStdString(std::to_string(elapsedTime)) + QString(" ms") +

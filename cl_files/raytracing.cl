@@ -1,3 +1,30 @@
+
+
+// This defines are hardcode, we will inject this defines in runtime before build the program.
+//#define NUM_BANKS 16
+//#define LOG_NUM_BANKS 5
+
+#ifdef NUM_BANKS
+#ifdef LOG_NUM_BANKS
+
+#define CONFLICT_FREE (1)
+
+#endif
+#endif
+
+#if (CONFLICT_FREE)
+
+//#define BANK_OFFSET(index) \
+//    ((index) >> NUM_BANKS + (index) >> (2*LOG_NUM_BANKS))
+#define BANK_OFFSET(index) ( index / NUM_BANKS)
+
+#else
+
+#define BANK_OFFSET(index) (0)
+
+#endif
+
+
 __constant float MINIMUM_INTERSECT_DISTANCE = 1e-7f;
 
 
@@ -86,68 +113,6 @@ static bool hasInterceptedPlane(float8 plane, float3 ray, float3 origin, float3 
 }
 
 
-#if 0
-static bool hasInterceptedSphere(float8 sphere, float3 ray, float3 origin, float3 * touchPoint)
-{
-    float rayDirX = ray.x;
-    float rayDirY = ray.y;
-    float rayDirZ = ray.z;
-
-    float rayOriginX = origin.x;
-    float rayOriginY = origin.y;
-    float rayOriginZ = origin.z;
-
-    float sphereCenterX = sphere.lo.x;
-    float sphereCenterY = sphere.lo.y;
-    float sphereCenterZ = sphere.lo.z;
-    float radius =        sphere.lo.w;
-
-    float A = rayDirX * rayDirX + rayDirY * rayDirY + rayDirZ * rayDirZ;
-    float B = 2 * (rayDirX * (rayOriginX - sphereCenterX) + rayDirY * (rayOriginY - sphereCenterY) + rayDirZ * (rayOriginZ - sphereCenterZ));
-    float C = (rayOriginX - sphereCenterX)*(rayOriginX - sphereCenterX) + (rayOriginY - sphereCenterY)*(rayOriginY - sphereCenterY) + (rayOriginZ - sphereCenterZ)*(rayOriginZ - sphereCenterZ) - radius*radius;
-
-    float delta = B * B - 4 * A * C;
-    if ( delta < 0 )
-    {
-        return false;
-    }
-
-    float root = sqrt( delta );
-    float t1 = (-B + root) / (2 * A);
-    float t2 = (-B - root) / (2 * A);
-
-    if ( t1 < 0 && t2 < 0 )
-    {
-        return false;
-    }
-
-    if ( t2 < t1 )   // t2 is the biggest
-    {
-        swap( &t1, &t2 );
-    }
-
-    float minT = t1;
-    if ( t1 < 0 )
-    {
-        minT = t2;
-    }
-    else if ( t1 < MINIMUM_INTERSECT_DISTANCE )
-    {
-        minT = t2;
-    }
-
-
-    if ( minT < MINIMUM_INTERSECT_DISTANCE )
-    {
-        return false;
-    }
-
-    *touchPoint = origin + (ray*(float)minT);
-    return true;
-}
-
-#else
-
 static bool solveQuadratic(const float a, const float b, const float c, float *x0, float *x1)
 {
     float discr = b * b - 4 * a * c;
@@ -208,8 +173,6 @@ static bool hasInterceptedSphere(float8 sphere, float3 dir, float3 orig, float3 
     return true;
 }
 
-#endif
-
 
 static float schlickApproximation(float n1, float n2, float3 incident, float3 normal)
 {
@@ -255,34 +218,6 @@ static float4 phong(float3 viewDir, float3 position, float3 normal, float4 diffu
     return outColor;
 }
 
-static void loadSpheresToLocal(__global const float *spheres,
-                               __local  float *temp,
-                                        int localIdx,
-                                        int numSpheres)
-{
-    if(localIdx < numSpheres)
-    {
-        float8 tempSphere = vload8(localIdx, spheres);
-        vstore8(tempSphere, localIdx, temp);
-    }
-
-    barrier(CLK_LOCAL_MEM_FENCE); // wait for spheres loading
-}
-
-static void loadPlanesToLocal(__global const float *planes,
-                               __local  float *temp,
-                                        int localIdx,
-                                        int numPlanes)
-{
-    if(localIdx < numPlanes)
-    {
-        float16 tempPlane = vload16(localIdx, planes);
-        vstore16(tempPlane, localIdx, temp);
-    }
-
-    barrier(CLK_LOCAL_MEM_FENCE); // wait for spheres loading
-}
-
 static float4 traceRay(float3 eye,
                        float3 ray,
                        __global const float * spheres,
@@ -315,8 +250,26 @@ static float4 traceRay(float3 eye,
     int localIdx = x * get_local_size(1) + y;
 
 
-    // Load planes to local memory
-    loadPlanesToLocal(planes, temp, localIdx, numPlanes);
+    // Load scene data to local memory
+
+    int sphereOffset = numSpheres % 2 == 0 ? (numSpheres/2) : ((numSpheres+1)/2 );
+    if(localIdx < numSpheres)
+    {
+        float8 tempSphere = vload8(localIdx, spheres);
+        vstore8(tempSphere, localIdx, temp);
+    }
+    else if( localIdx  > numSpheres && localIdx < sphereOffset*2+numPlanes)
+    {
+        float16 tempPlane = vload16(localIdx - sphereOffset* 2, planes);
+        vstore16(tempPlane, localIdx - sphereOffset, temp);
+    }
+    if(localIdx < numLights)
+    {
+        float8 tempLight = vload8(localIdx, lights);
+        vstore8(tempLight, localIdx, temp2);
+    }
+    barrier(CLK_LOCAL_MEM_FENCE); // wait for loading data
+
 
     // Check for planes intersection
     int currentPlaneIdx = -1;
@@ -331,7 +284,7 @@ static float4 traceRay(float3 eye,
             continue;
         }
 
-        float16 plane = vload16(i, temp);
+        float16 plane = vload16(i+sphereOffset, temp);
         if(hasInterceptedPlane(plane.lo, ray, eye, &touchPoint))
         {
             float dist = fast_distance(touchPoint, eye);
@@ -364,9 +317,6 @@ static float4 traceRay(float3 eye,
     {
         *lastPlaneIdx = currentPlaneIdx;
     }
-    barrier(CLK_LOCAL_MEM_FENCE); // we may be accessing planes in local memory
-
-    loadSpheresToLocal(spheres, temp, localIdx, numSpheres);
 
     // Check for spheres intersection
     bool hasHitSphere = false;
@@ -407,14 +357,6 @@ static float4 traceRay(float3 eye,
         *lastSphereIdx = currentSphereIdx;
         *lastPlaneIdx = -1;
     }
-
-    // Load lights to local memory
-    if(localIdx < numLights)
-    {
-        float8 tempLight = vload8(localIdx, lights);
-        vstore8(tempLight, localIdx, temp2);
-    }
-    barrier(CLK_LOCAL_MEM_FENCE); // wait for lights loading
 
     // Calculate color
     if(hasHit)
@@ -491,12 +433,101 @@ static float4 traceRay(float3 eye,
         }
     }
 
-    barrier(CLK_LOCAL_MEM_FENCE);
     return outColor;
 }
 
+// Proccess two elements by thread
+__kernel void prefixSum(__global const int * input,
+                         __global int * output,
+                         __local  int * temp,
+                         int const size)
+{
+    const int n = get_local_size(0)*2;
 
-__kernel void rayTracing(__write_only image2d_t texture,
+    const int thid = get_local_id(0);
+    int offset = 1;
+
+    const int groupIdx = get_global_id(0) / get_local_size(0);
+
+    const int gai = groupIdx * n +  thid;
+    const int gbi = groupIdx * n +  thid + n/2;
+
+    const int lai = thid;
+    const int lbi = thid+n/2;
+
+    const int bankOffsetA = BANK_OFFSET(lai);
+    const int bankOffsetB = BANK_OFFSET(lbi);
+
+    temp[lai+bankOffsetA] = input[gai];
+    temp[lbi+bankOffsetB] = input[gbi];
+
+    for (int d = n>>1; d > 0; d >>= 1)                    // build sum in place up the tree
+    {
+       barrier(CLK_LOCAL_MEM_FENCE);
+       if (thid < d)
+       {
+            int ai = offset*(2*thid+1)-1;
+            int bi = offset*(2*thid+2)-1;
+
+            ai += BANK_OFFSET(ai);
+            bi += BANK_OFFSET(bi);
+
+            temp[bi] += temp[ai];
+        }
+        offset *= 2;
+    }
+
+    if (thid == 0)
+    {
+        temp[n - 1] = 0;
+    } // clear the last element
+
+    for (int d = 1; d < n; d *= 2) // traverse down tree & build scan
+    {
+         offset >>= 1;
+         barrier(CLK_LOCAL_MEM_FENCE);
+         if (thid < d)
+         {
+            int ai = offset*(2*thid+1)-1;
+            int bi = offset*(2*thid+2)-1;
+
+            ai += BANK_OFFSET(ai);
+            bi += BANK_OFFSET(bi);
+
+            float t = temp[ai];
+            temp[ai] = temp[bi];
+            temp[bi] += t;
+          }
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    output[gai] = temp[lai + bankOffsetA]; // write results to device memory
+    output[gbi] = temp[lbi + bankOffsetB];
+
+//    int ai = offset*(2*thid+1)-1;
+//    int bi = offset*(2*thid+2)-1;
+
+//    ai += BANK_OFFSET(ai);
+//    bi += BANK_OFFSET(bi);
+////    ai += ai / NUM_BANKS;
+////    bi += bi / NUM_BANKS;
+
+//    output[gai] = ai;
+//    output[gbi] = bi;
+}
+
+__kernel void drawToTexture(__write_only image2d_t glTexture,
+                            __global float * texture)
+{
+    int x = get_global_id(0);
+    int y = get_global_id(1);
+
+    int idx = x * get_global_size(1) + y;
+    float4 color = vload4(idx, texture);
+    write_imagef(glTexture, (int2)(x, y), color);
+}
+
+__kernel void rayTracing(__global float * texture,
                          __global const float * spheres,
                          const int numSpheres,
                          __global const float * planes,
@@ -505,12 +536,14 @@ __kernel void rayTracing(__write_only image2d_t texture,
                          const int numLights,
                          __local float * temp,
                          __local float * temp2,
-                         const float eyeX, const float eyeY, const float eyeZ,
-                         const int width, const int height)
+                         const float eyeX, const float eyeY, const float eyeZ)
 {
     // Ray Setup
     int x = get_global_id(0);
     int y = get_global_id(1);
+
+    int width = get_global_size(0);
+    int height = get_global_size(1);
 
     float3 eye    = (float3)(eyeX, eyeY, eyeZ);
     float3 center = (float3)(0, 0.0f, 0);
@@ -536,7 +569,6 @@ __kernel void rayTracing(__write_only image2d_t texture,
 
     float4 color = traceRay(eye, ray, spheres, numSpheres, planes, numPlanes, lights, numLights, temp, temp2, &newRay, &newRefracted, &R, &T, &touchPos, &currentSphereIdx, &currentPlaneIdx);
 
-
     // Gamma correction
     float3 gamma = (float3)(1.0f/2.2f, 1.0f/2.2f, 1.0f/2.2f);
     color = (float4)( pow(color.x, gamma.x),
@@ -544,6 +576,8 @@ __kernel void rayTracing(__write_only image2d_t texture,
                       pow(color.z, gamma.z),
                       color.w);
 
+    vstore4(color, x * get_global_size(1) + (height-y), texture);
+
     // Write to texture
-    write_imagef(texture, (int2)(x, height-y), color);
+//    write_imagef(texture, (int2)(x, height-y), color);
 }

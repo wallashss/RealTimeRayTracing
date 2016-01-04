@@ -114,11 +114,11 @@ public:
 
     bool dispatchKernel(const std::string& kernelName, NDRange range);
 
-    bool dispatchKernel(const std::string& kernelName, NDRange range, const KernelArg args ...);
-
     bool dispatchKernel(const std::string& kernelName, NDRange range, const std::vector<KernelArg>& args);
 
     bool setKernelArg(const std::string & kernelName, KernelArg args, int index);
+
+    void finish();
 
     // OpenCL Buffers
 
@@ -151,6 +151,7 @@ public:
     BufferId shareGLTexture(const GLTextureId id, BufferType type);
 
     void executeSafeAndSyncronized(BufferId * textureToLock, unsigned int count, std::function<void()> exec);
+
 
     // Static util
     static std::vector<std::string> listAvailablePlatforms();
