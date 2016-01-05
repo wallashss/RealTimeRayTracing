@@ -3,7 +3,7 @@
 #include <vector>
 #include <scene.h>
 
-std::vector<dwg::Sphere> getSceneSpheres()
+std::vector<dwg::Sphere> getDefaultSceneSpheres()
 {
     std::vector<dwg::Sphere> spheres;
     dwg::Sphere s;
@@ -53,7 +53,8 @@ std::vector<dwg::Sphere> getSceneSpheres()
     return spheres;
 }
 
-std::vector<dwg::Light> getSceneLights()
+
+std::vector<dwg::Light> getDefaultSceneLights()
 {
     std::vector<dwg::Light> lights;
     dwg::Light l;
@@ -62,24 +63,17 @@ std::vector<dwg::Light> getSceneLights()
     l.color = glm::vec4(2,2,2,1.0f);
     lights.push_back(l);
 
-
     l.position = glm::vec3(0,15,20);
     l.color = glm::vec4(1,1,1,1.0f);
     lights.push_back(l);
 
-    l.position = glm::vec3(0,10,0);
-    l.color = glm::vec4(1,1,1,1.0f);
-    lights.push_back(l);
-
-//    l.position = glm::vec3(-10,15,40);
+//    l.position = glm::vec3(0,10,0);
 //    l.color = glm::vec4(1,1,1,1.0f);
 //    lights.push_back(l);
-
-
     return lights;
 }
 
-std::vector<dwg::Plane> getScenePlanes()
+std::vector<dwg::Plane> getDefaultScenePlanes()
 {
     std::vector<dwg::Plane> planes;
     dwg::Plane p;
@@ -88,7 +82,7 @@ std::vector<dwg::Plane> getScenePlanes()
     p.position = glm::vec3(0,-5,0);
     p.tileSize  = 2.5f;
     p.normal = glm::vec3(0.0f, -1.0f, 0.0f);
-    p.color = glm::vec4(1.0f, 1.0f, 1.0f, 1.2f);
+    p.color1 = glm::vec4(1.0f, 1.0f, 1.0f, 1.2f);
     p.color2 = glm::vec4(0.0f, 0.0f, 0.0f, 1.2f);
     planes.push_back(p);
 
@@ -96,35 +90,35 @@ std::vector<dwg::Plane> getScenePlanes()
     p.position = glm::vec3(15,0,0);
     p.tileSize  = 0.0f;
     p.normal = glm::vec3(1,0,0);
-    p.color = glm::vec4(1,0,0,0.0f);
+    p.color1 = glm::vec4(1,0,0,0.0f);
     planes.push_back(p);
 
     // Left wall
     p.position = glm::vec3(-15,0,0);
     p.tileSize  = 0.0f;
     p.normal = glm::vec3(-1,0,0);
-    p.color = glm::vec4(0,0,1,0.0f);
+    p.color1 = glm::vec4(0,0,1,0.0f);
     planes.push_back(p);
 
     // Back
     p.position = glm::vec3(0,0,50);
     p.tileSize  = 0.0f;
     p.normal = glm::vec3(0,0,1);
-    p.color = glm::vec4(.2f,0.2f,0.2f, 1.2f);
+    p.color1 = glm::vec4(.2f,0.2f,0.2f, 1.2f);
     planes.push_back(p);
 
     // Front
     p.position = glm::vec3(0,0,-10);
     p.tileSize  = 0.0f;
     p.normal = glm::vec3(0,0,-1);
-    p.color = glm::vec4(.7f,0.7f,0.7f, 1.2f);
+    p.color1 = glm::vec4(.7f,0.7f,0.7f, 1.2f);
     planes.push_back(p);
 
     // Ceil
     p.position = glm::vec3(0,20,0);
     p.tileSize  = 0.0f;
     p.normal = glm::vec3(0, 1.0f, 0);
-    p.color = glm::vec4(0.6f,0.6f,0.6f, 0.0f);
+    p.color1 = glm::vec4(0.6f,0.6f,0.6f, 0.0f);
     planes.push_back(p);
 
 

@@ -9,7 +9,7 @@
 
 #include <iostream>
 
-GLView::GLView(std::function<void(GLView *)> initCallback) : QOpenGLWidget()
+GLView::GLView(int textureWidth, int textureHeight, std::function<void(GLView *)> initCallback) : QOpenGLWidget(), _textureWidth(textureWidth), _textureHeight(textureHeight)
 {
 #if __APPLE__
     QSurfaceFormat glFormat;
@@ -44,7 +44,12 @@ void GLView::setPaintCallback(std::function<void(GLView*)> callback)
 
 void GLView::setBaseTexture(GLuint newTextureId)
 {
-    _textureBuffer = newTextureId;
+    _glTexture = newTextureId;
+}
+
+GLuint GLView::getBaseTexture() const
+{
+    return _glTexture;
 }
 
 void GLView::paintGL()
@@ -59,7 +64,7 @@ void GLView::paintGL()
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
 
-    glBindTexture(GL_TEXTURE_2D, _textureBuffer);
+    glBindTexture(GL_TEXTURE_2D, _glTexture);
     glEnable(GL_TEXTURE_2D);
 
     if(_paintCallback)
@@ -85,63 +90,67 @@ void GLView::initializeGL()
     // Initialize OpenGL Functions
     initializeOpenGLFunctions();
 
-    if(_initCallback)
-    {
-        _initCallback(this);
-    }
-
     glViewport(0, 0, width(), height());
 
     _checkErrors("Before initializeGL");
     glClearColor(0.0f, 0.0f, 1.0f, 1.0f);
 
-    glGenTextures(1, &_textureBuffer);
-
-
+    glGenTextures(1, &_glTexture);
     // In windows, here width and height
-    if(_textureBuffer)
+    if(_glTexture)
     {
-        int w = 640;
-        int h = 480;
-
         // Chess dummy texture
-        int totalBytes = w*h*3;
+        int totalBytes = _textureWidth*_textureHeight*4;
         unsigned char * dummyTexture = new unsigned char[totalBytes];
 
 
-        for(int i = 0 ; i < h; i++)
+        for(int i = 0 ; i < _textureHeight; i++)
         {
-            for(int j = 0 ; j < w; j++)
+            for(int j = 0 ; j < _textureWidth; j++)
             {
                 int tilex = i / 40 ;
                 int tiley = j / 40 ;
 
-                int index = i* (w*3) + (j*3);
+                int index = i* (_textureWidth*4) + (j*4);
 
                 if((tilex % 2 == 0 && tiley % 2 == 0) || (tilex % 2 != 0 && tiley % 2 !=0))
                 {
                     dummyTexture[index +0] = 128;
                     dummyTexture[index +1] = 128;
                     dummyTexture[index +2] = 128;
+                    dummyTexture[index +3] = 255;
                 }
                 else
                 {
                     dummyTexture[index +0] = 0;
                     dummyTexture[index +1] = 0;
                     dummyTexture[index +2] = 128;
+                    dummyTexture[index +3] = 255;
                 }
             }
         }
 
-        glBindTexture(GL_TEXTURE_2D, _textureBuffer);
+
+//        glBindTexture(GL_TEXTURE_2D, _glTexture);
+//        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+//        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+//        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, _textureWidth, _textureHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, dummyTexture);
+        glBindTexture(GL_TEXTURE_2D, _glTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, dummyTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, _textureWidth, _textureHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, dummyTexture);
         delete [] dummyTexture;
     }
     else
     {
         std::cout << "Error loading texture " << std::endl;
+    }
+
+    if(_initCallback)
+    {
+        _initCallback(this);
     }
     _checkErrors("After initializeGL");
 }

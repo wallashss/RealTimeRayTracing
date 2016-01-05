@@ -16,13 +16,15 @@ class GLView : public QOpenGLWidget , public QOpenGLFunctions_3_3_Compatibility
 #endif
 {
 public:
-    GLView(std::function<void(GLView*)> initCallback);
+    GLView(int textureWidth, int textureHeight, std::function<void(GLView*)> initCallback);
 
     GLuint createTexture(unsigned int width, unsigned int height);
 
     void setPaintCallback(std::function<void(GLView*)> callback);
 
     void setBaseTexture(GLuint newTextureId);
+
+    GLuint getBaseTexture() const;
 
 protected:
 
@@ -35,7 +37,11 @@ private:
 
 private:
 
-    GLuint _textureBuffer;
+    GLuint _glTexture;
+
+    int _textureWidth;
+
+    int _textureHeight;
 
     std::function<void(GLView*)> _initCallback;
 

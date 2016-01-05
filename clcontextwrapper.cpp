@@ -455,20 +455,19 @@ bool CLContextWrapper::createProgramFromSource(const std::string & source)
     const cl_device_id const_device_id = _this->deviceId;
     err = clBuildProgram(_this->computeProgram, 1,&const_device_id, NULL, NULL, NULL);
 
-    size_t length;
-    char buildLog[2048];
-    clGetProgramBuildInfo(_this->computeProgram, _this->deviceId, CL_PROGRAM_BUILD_LOG, sizeof(buildLog), buildLog, &length);
+    size_t length = 0;
+
+    clGetProgramBuildInfo(_this->computeProgram, _this->deviceId, CL_PROGRAM_BUILD_LOG, 0, nullptr, &length);
     if(length > 1)
     {
+        char * buildLog = new char[length];
+        clGetProgramBuildInfo(_this->computeProgram, _this->deviceId, CL_PROGRAM_BUILD_LOG, length*sizeof(char), buildLog, nullptr);
         std::cout << buildLog << std::endl;
+        delete [] buildLog;
     }
 
     if (err != CL_SUCCESS)
     {
-        std::cout << "___________Begin Source___________________" << std::endl;
-        std::cout <<  source << std::endl;
-        std::cout << "___________End Source___________________" << std::endl;
-        std::cout << "Error: Failed to build program executable!" << std::endl;
         std::cout << getError(err) << std::endl;
         return false;
     }
@@ -611,7 +610,7 @@ void CLContextWrapper::finish()
 }
 
 
-BufferId CLContextWrapper::createBufferWithBytes(size_t bytesSize, void * hostData, BufferType type)
+BufferId CLContextWrapper::createBuffer(size_t bytesSize, void * hostData, BufferType type)
 {
     cl_int err;
     cl_mem_flags flags  = getMemFlags(type);

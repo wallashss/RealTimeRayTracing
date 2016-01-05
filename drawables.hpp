@@ -4,30 +4,30 @@
 
 namespace dwg
 {
-struct Drawables
-{
-    glm::vec4 color;
-    glm::vec3 position;
-};
 
-
-struct Sphere : Drawables
+struct Sphere
 {
     glm::vec3 position;
     float radius;
+    glm::vec4 color;
 };
 
 // All planes are chess for definition
-struct Plane : Drawables
+struct Plane
 {
+    glm::vec3 position;
     float tileSize;
     glm::vec3 normal;
+    float dummyFloat; // padding to align memory
+    glm::vec4 color1;
     glm::vec4 color2;
 };
 
-struct Light : Drawables
+struct Light
 {
-
+    glm::vec3 position;
+    float dummyFloat; // padding to align memory
+    glm::vec4 color;
 };
 
 

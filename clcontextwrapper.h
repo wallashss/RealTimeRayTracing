@@ -123,12 +123,12 @@ public:
     // OpenCL Buffers
 
     template <typename T>
-    BufferId createBuffer(size_t count, T * hostData = nullptr, BufferType type = BufferType::READ_AND_WRITE)
+    BufferId createBufferFromArray(size_t count, T * hostData = nullptr, BufferType type = BufferType::READ_AND_WRITE)
     {
-        return createBufferWithBytes(sizeof(T)*count, hostData, type);
+        return createBuffer(sizeof(T)*count, hostData, type);
     }
 
-    BufferId createBufferWithBytes(size_t bytesSize, void * hostData = nullptr, BufferType type = BufferType::READ_AND_WRITE);
+    BufferId createBuffer(size_t bytesSize, void * hostData = nullptr, BufferType type = BufferType::READ_AND_WRITE);
 
     template <typename T>
     bool uploadArrayToBuffer(BufferId id, size_t count, T * data, size_t offset = 0,  const bool blocking = true)

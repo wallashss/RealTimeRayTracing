@@ -1,8 +1,8 @@
 
 
 // This defines are hardcode, we will inject this defines in runtime before build the program.
-//#define NUM_BANKS 16
-//#define LOG_NUM_BANKS 5
+#define NUM_BANKS 32
+#define LOG_NUM_BANKS 5
 
 #ifdef NUM_BANKS
 #ifdef LOG_NUM_BANKS
@@ -14,9 +14,8 @@
 
 #if (CONFLICT_FREE)
 
-//#define BANK_OFFSET(index) \
-//    ((index) >> NUM_BANKS + (index) >> (2*LOG_NUM_BANKS))
-#define BANK_OFFSET(index) ( index / NUM_BANKS)
+#define BANK_OFFSET(index) \
+    (index >> NUM_BANKS + index >> (2*LOG_NUM_BANKS))
 
 #else
 
@@ -27,6 +26,7 @@
 
 __constant float MINIMUM_INTERSECT_DISTANCE = 1e-7f;
 
+__constant float BIAS_OFFSET = 1.0f;
 
 static void swap(float * a, float * b)
 {
@@ -258,7 +258,7 @@ static float4 traceRay(float3 eye,
         float8 tempSphere = vload8(localIdx, spheres);
         vstore8(tempSphere, localIdx, temp);
     }
-    else if( localIdx  > numSpheres && localIdx < sphereOffset*2+numPlanes)
+    else if( localIdx  > numSpheres && localIdx < (sphereOffset*2+numPlanes))
     {
         float16 tempPlane = vload16(localIdx - sphereOffset* 2, planes);
         vstore16(tempPlane, localIdx - sphereOffset, temp);
@@ -279,10 +279,10 @@ static float4 traceRay(float3 eye,
         {
             break;
         }
-        if(*lastPlaneIdx == i)
-        {
-            continue;
-        }
+//        if(*lastPlaneIdx == i)
+//        {
+//            continue;
+//        }
 
         float16 plane = vload16(i+sphereOffset, temp);
         if(hasInterceptedPlane(plane.lo, ray, eye, &touchPoint))
@@ -327,10 +327,10 @@ static float4 traceRay(float3 eye,
         {
             break;
         }
-        if((*lastSphereIdx) == i)
-        {
-            continue;
-        }
+//        if((*lastSphereIdx) == i)
+//        {
+//            continue;
+//        }
         float8 sphere = vload8(i, temp);
 
         if(hasInterceptedSphere(sphere, ray, eye, &touchPoint))
@@ -395,6 +395,7 @@ static float4 traceRay(float3 eye,
 //            *touchPos = closestPoint;
 //        }
 
+        // Calculate illumination for all spheres
         for(int i = 0 ; i < numLights; i++)
         {
             float8 light = vload8(i, temp2);
@@ -402,7 +403,7 @@ static float4 traceRay(float3 eye,
             float4 lightColor = light.hi;
 
             // Check if point is occluded (shadow) only for spheres
-            float3 lightDir = normalize(closestPoint - lightPos);
+            float3 lightDir = normalize(closestPoint - lightPos );
             bool isInShadow = false;
 
             for(int j = 0 ; j < numSpheres ; j++)
@@ -412,9 +413,9 @@ static float4 traceRay(float3 eye,
 
                 if(j != *lastSphereIdx)
                 {
-                    if(hasInterceptedSphere(sphere, lightDir, lightPos, &occludedPoint))
+                    if(hasInterceptedSphere(sphere, lightDir, lightPos , &occludedPoint))
                     {
-                        if(fast_distance(occludedPoint, lightPos) < fast_distance(lightPos, closestPoint))
+                        if(fast_distance(occludedPoint , lightPos - lightDir * BIAS_OFFSET) < fast_distance(lightPos, closestPoint))
                         {
                             isInShadow = true;
                             break;
@@ -436,11 +437,14 @@ static float4 traceRay(float3 eye,
     return outColor;
 }
 
+
+
 // Proccess two elements by thread
-__kernel void prefixSum(__global const int * input,
-                         __global int * output,
-                         __local  int * temp,
-                         int const size)
+__kernel void prefixSumKernel(__global const int * input,
+                              __global int * output,
+                              __global int * groupPrefixes,
+                              __local  int * temp,
+                              int const size)
 {
     const int n = get_local_size(0)*2;
 
@@ -461,7 +465,8 @@ __kernel void prefixSum(__global const int * input,
     temp[lai+bankOffsetA] = input[gai];
     temp[lbi+bankOffsetB] = input[gbi];
 
-    for (int d = n>>1; d > 0; d >>= 1)                    // build sum in place up the tree
+    // build sum in place up the tree
+    for (int d = n>>1; d > 0; d >>= 1)
     {
        barrier(CLK_LOCAL_MEM_FENCE);
        if (thid < d)
@@ -476,13 +481,17 @@ __kernel void prefixSum(__global const int * input,
         }
         offset *= 2;
     }
+    barrier(CLK_LOCAL_MEM_FENCE);
 
+    // clear the last element
     if (thid == 0)
     {
-        temp[n - 1] = 0;
-    } // clear the last element
+        groupPrefixes[groupIdx] = temp[(n - 1) + BANK_OFFSET((n-1)) ];
+        temp[(n - 1) + BANK_OFFSET((n-1)) ] = 0;
+    }
 
-    for (int d = 1; d < n; d *= 2) // traverse down tree & build scan
+    // traverse down tree & build scan
+    for (int d = 1; d < n; d *= 2)
     {
          offset >>= 1;
          barrier(CLK_LOCAL_MEM_FENCE);
@@ -501,22 +510,12 @@ __kernel void prefixSum(__global const int * input,
     }
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    output[gai] = temp[lai + bankOffsetA]; // write results to device memory
+    // write results to device memory
+    output[gai] = temp[lai + bankOffsetA];
     output[gbi] = temp[lbi + bankOffsetB];
-
-//    int ai = offset*(2*thid+1)-1;
-//    int bi = offset*(2*thid+2)-1;
-
-//    ai += BANK_OFFSET(ai);
-//    bi += BANK_OFFSET(bi);
-////    ai += ai / NUM_BANKS;
-////    bi += bi / NUM_BANKS;
-
-//    output[gai] = ai;
-//    output[gbi] = bi;
 }
 
-__kernel void drawToTexture(__write_only image2d_t glTexture,
+__kernel void drawToTextureKernel(__write_only image2d_t glTexture,
                             __global float * texture)
 {
     int x = get_global_id(0);
@@ -527,35 +526,37 @@ __kernel void drawToTexture(__write_only image2d_t glTexture,
     write_imagef(glTexture, (int2)(x, y), color);
 }
 
-__kernel void rayTracing(__global float * texture,
-                         __global const float * spheres,
-                         const int numSpheres,
-                         __global const float * planes,
-                         const int numPlanes,
-                         __global const float * lights,
-                         const int numLights,
-                         __local float * temp,
-                         __local float * temp2,
-                         const float eyeX, const float eyeY, const float eyeZ)
+
+// This is the first kernel, when we generate the primary rays
+__kernel void primaryRayTracingKernel( __global float * texture,
+                                       __global const float * spheres,
+                                       const int numSpheres,
+                                       __global const float * planes,
+                                       const int numPlanes,
+                                       __global const float * lights,
+                                       const int numLights,
+                                       __local float * temp,
+                                       __local float * temp2,
+                                       const float eyeX, const float eyeY, const float eyeZ)
 {
     // Ray Setup
-    int x = get_global_id(0);
-    int y = get_global_id(1);
+    const int x = get_global_id(0);
+    const int y = get_global_id(1);
 
-    int width = get_global_size(0);
-    int height = get_global_size(1);
+    const int width = get_global_size(0);
+    const int height = get_global_size(1);
 
-    float3 eye    = (float3)(eyeX, eyeY, eyeZ);
-    float3 center = (float3)(0, 0.0f, 0);
-    float3 up     = (float3)(0, 1.0f, 0);
+    const float3 eye    = (float3)(eyeX, eyeY, eyeZ);
+    const float3 center = (float3)(0, 0.0f, 0);
+    const float3 up     = (float3)(0, 1.0f, 0);
 
-    float3 dir   = normalize(center - eye) ;
-    float3 right = normalize(cross(up, dir));
+    const float3 dir   = normalize(center - eye) ;
+    const float3 right = normalize(cross(up, dir));
 
-    float3 origin = eye - (dir * 1000.0f) ;
+    const float3 origin = eye - (dir * 1000.0f) ;
 
-    float3 pixelPos = eye + (x-width/2) * right + (height/2-y) * up;
-    float3 ray = normalize(pixelPos - origin) ;
+    const float3 pixelPos = eye + (x-width/2) * right + (height/2-y) * up;
+    const float3 ray = normalize(pixelPos - origin) ;
 
     // Raytracing!
     float3 newRay = (float3)(0, 0, 0);
@@ -577,7 +578,29 @@ __kernel void rayTracing(__global float * texture,
                       color.w);
 
     vstore4(color, x * get_global_size(1) + (height-y), texture);
-
-    // Write to texture
-//    write_imagef(texture, (int2)(x, height-y), color);
 }
+
+__kernel void compactRays(__global const float * inputRays,
+                          __global const float * outputRays,
+                          __global const int   * inputRaysPixelsPos,
+                          __global const int   * outputRaysPixelsPos,
+                          __global const int   * raysPrefixes,
+                          __global const int   * numRays)
+{
+
+}
+
+//__kernel void rayTracingKernel(__global float * texture,
+//                               __global const float * spheres,
+//                               const int numSpheres,
+//                               __global const float * planes,
+//                               const int numPlanes,
+//                               __global const float * lights,
+//                               const int numLights,
+//                               __global float * rays,
+//                               __local float * temp,
+//                               __local float * temp2,
+//                               const float eyeX, const float eyeY, const float eyeZ)
+//{
+
+//}
