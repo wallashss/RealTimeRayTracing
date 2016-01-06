@@ -45,7 +45,7 @@ static float3 refract(float3 I, float3 N, float eta)
     float k = 1.0f - eta * eta * (1.0f - dot(N, I) * dot(N, I));
     if (k < 0.0f)
     {
-        return float3(0,0,0);
+        return (float3)(0,0,0);
     }
     else
     {
@@ -436,7 +436,6 @@ static float4 traceRay(float3 eye,
 
     return outColor;
 }
-
 
 
 // Proccess two elements by thread

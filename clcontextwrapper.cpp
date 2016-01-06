@@ -167,7 +167,6 @@ static inline void logError(const std::string & error, const std::string & error
 CLContextWrapper::CLContextWrapper() : _hasCreatedContext(false), _deviceType(DeviceType::NONE)
 {
     _this = new CLContextWrapperPrivate;
-//    _this->nextBufferId = 1;
 }
 
 CLContextWrapper::~CLContextWrapper()
@@ -177,10 +176,6 @@ CLContextWrapper::~CLContextWrapper()
         clReleaseKernel(it.second.kernel);
     }
 
-//    for(auto it : _this->buffers)
-//    {
-//        clReleaseMemObject(it.second);
-//    }
     for(auto mem : _this->buffers)
     {
         clReleaseMemObject(mem);
@@ -478,7 +473,7 @@ bool CLContextWrapper::createProgramFromSource(const std::string & source)
 }
 
 
-bool CLContextWrapper::prepareKernel(const std::string & kernelName)
+KernelId CLContextWrapper::prepareKernel(const std::string & kernelName)
 {
     cl_int err;
 
@@ -489,7 +484,7 @@ bool CLContextWrapper::prepareKernel(const std::string & kernelName)
     {
         std::cout << "Error: Failed to create compute kernel!" << std::endl;
         std::cout << getError(err) << std::endl;
-        return false;
+        return newKernel;
     }
 
     // Get workgroup size
@@ -499,7 +494,7 @@ bool CLContextWrapper::prepareKernel(const std::string & kernelName)
     {
         std::cout << "Error: Failed to get kernel work group size" << std::endl;
         std::cout << getError(err) << std::endl;
-        return false;
+        return newKernel;
     }
 
     unsigned long lmemSize;
@@ -508,7 +503,7 @@ bool CLContextWrapper::prepareKernel(const std::string & kernelName)
     {
         std::cout << "Error: Failed to get kernel local memory size" << std::endl;
         std::cout << getError(err) << std::endl;
-        return false;
+        return newKernel;
     }
 
     KernelInfo info;
@@ -523,7 +518,7 @@ bool CLContextWrapper::prepareKernel(const std::string & kernelName)
     std::cout << "Local Memory size :" << lmemSize << std::endl;
 
 
-    return true;
+   return newKernel;
 }
 
 size_t CLContextWrapper::getWorkGroupSize(const std::string & kernelName) const
@@ -588,7 +583,7 @@ bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange ran
         logError("Error: Failed to dispatch kernel", getError(err));
         return false;
     }
-//    std::cout << "Successfully dispatched kernel \"" << kernelName <<"\"" << std::endl;
+    std::cout << "Successfully dispatched kernel \"" << kernelName <<"\"" << std::endl;
     return true;
 }
 

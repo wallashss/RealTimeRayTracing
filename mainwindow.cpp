@@ -45,7 +45,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Timer for rotation update
     _qtimer = new QTimer(this);
-    _qtimer->setInterval(16);
+    _qtimer->setInterval(16); // max 60 FPS
     QObject::connect(_qtimer, &QTimer::timeout, [&]
     {
         _raytracer->setEye(glm::rotateY(_raytracer->getEye(), glm::pi<float>()*0.01f));

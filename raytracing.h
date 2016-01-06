@@ -24,15 +24,15 @@ private:
 
     // Spheres
     BufferId _spheresBufferId;
-    size_t _numSpheres;
+    int _numSpheres;
 
     // Planes
     BufferId _planesBufferId;
-    size_t _numPlanes;
+    int _numPlanes;
 
     // Lights
     BufferId _lightsBufferId;
-    size_t _numLights;
+    int _numLights;
 
     // Temp buffers
     BufferId _tempColorsBufferId;

@@ -5,8 +5,7 @@
 #include <QTextStream>
 #include <timer.h>
 
-//static int localSizeX = 16;
-//static int localSizeY = 16;
+#include <CL/opencl.h>
 
 RayTracing::RayTracing(dwg::Scene scene, unsigned int glTexture, int textureWidth, int textureHeight) : _textureWidth(textureWidth), _textureHeight(textureHeight)
 {
@@ -29,14 +28,16 @@ RayTracing::RayTracing(dwg::Scene scene, unsigned int glTexture, int textureWidt
         return;
     }
 
+
+
     // Share glTexture
     _glTexture = glTexture;
     _sharedTextureBufferId = _clContext->shareGLTexture(_glTexture, BufferType::WRITE_ONLY);
 
     // Setup scene
-    _numSpheres = scene.spheres.size();
-    _numPlanes = scene.planes.size();
-    _numLights = scene.lights.size();
+    _numSpheres = static_cast<int>(scene.spheres.size());
+    _numPlanes = static_cast<int>(scene.planes.size());
+    _numLights = static_cast<int>(scene.lights.size());
 
     // Setup buffers
     _spheresBufferId = _clContext->createBufferFromArray(scene.spheres.size(), &(scene.spheres.data()[0]), BufferType::READ_ONLY);
@@ -59,6 +60,8 @@ RayTracing::RayTracing(dwg::Scene scene, unsigned int glTexture, int textureWidt
     QString clSource = kernelSourceTS.readAll();
 
     _clContext->createProgramFromSource(clSource.toStdString());
+
+
     _clContext->prepareKernel("primaryRayTracingKernel");
     _clContext->prepareKernel("drawToTextureKernel");
     _clContext->prepareKernel("prefixSumKernel");
@@ -80,6 +83,8 @@ void RayTracing::update()
     size_t localTempSize = sizeof(float)*16*localSizeX*localSizeY;
     size_t localLightSize = sizeof(float)*8*_numLights;
 
+
+
     _clContext->dispatchKernel("primaryRayTracingKernel", range, {&_tempColorsBufferId,
                                                     &_spheresBufferId, &_numSpheres,
                                                     &_planesBufferId, &_numPlanes,
@@ -88,10 +93,12 @@ void RayTracing::update()
                                                     KernelArg::getShared(localLightSize),
                                                     &_eye.x, &_eye.y, &_eye.z});
 
+
     _clContext->executeSafeAndSyncronized(&_sharedTextureBufferId, 1, [=] () mutable
     {
         _clContext->dispatchKernel("drawToTextureKernel", range, {&_sharedTextureBufferId,
                                                                   &_tempColorsBufferId});
+
     });
 }
 

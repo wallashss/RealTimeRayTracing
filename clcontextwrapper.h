@@ -82,7 +82,9 @@ struct KernelArg
 
 
 
-typedef void * BufferId; // TODO: Make an assert to ensure cl_mem = void *
+//typedef int BufferId; // TODO: Make an assert to ensure cl_mem = void *
+typedef void * BufferId;
+typedef void * KernelId; // TODO: Make an assert to ensure cl_kernel = void *
 typedef unsigned int GLTextureId;
 
 class CLContextWrapper
@@ -108,7 +110,9 @@ public:
 
     bool createProgramFromSource(const std::string & source);
 
-    bool prepareKernel(const std::string & kernelName);
+    KernelId prepareKernel(const std::string & kernelName);
+
+    KernelId getKernel(const std::string & kernelName);
 
     size_t getWorkGroupSize(const std::string & kernelName) const;
 
