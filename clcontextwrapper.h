@@ -106,6 +106,8 @@ public:
 
     DeviceType getContextDeviceType() const;
 
+    size_t getMaxWorkGroupSize() const;
+
     // Kernel
 
     bool createProgramFromSource(const std::string & source);
@@ -114,7 +116,7 @@ public:
 
     KernelId getKernel(const std::string & kernelName);
 
-    size_t getWorkGroupSize(const std::string & kernelName) const;
+    size_t getWorkGroupSizeForKernel(const std::string & kernelName) const;
 
     bool dispatchKernel(const std::string& kernelName, NDRange range);
 

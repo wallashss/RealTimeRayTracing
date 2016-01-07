@@ -53,6 +53,8 @@ struct CLContextWrapperPrivate
     cl_device_id        deviceId;
     cl_program          computeProgram;
 
+    size_t              maxWorkGroupSize;
+
     std::unordered_map<std::string, KernelInfo> kernels;
     std::unordered_set<cl_mem> buffers;
 
@@ -232,9 +234,9 @@ bool CLContextWrapper::createContext(DeviceType deviceType)
         return false;
     }
 
-    size_t returned_size = 0;
-    size_t max_workgroup_size = 0;
-    err = clGetDeviceInfo(computeDeviceId, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &max_workgroup_size, &returned_size);
+    size_t returnedSize = 0;
+    size_t maxWorkGroupSize = 0;
+    err = clGetDeviceInfo(computeDeviceId, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &maxWorkGroupSize, &returnedSize);
     if (err != CL_SUCCESS)
     {
         logError("Error: Failed to retrieve device info!", getError(err));
@@ -243,8 +245,8 @@ bool CLContextWrapper::createContext(DeviceType deviceType)
 
     cl_char vendorName[1024] = {0};
     cl_char deviceName[1024] = {0};
-    err = clGetDeviceInfo(computeDeviceId, CL_DEVICE_VENDOR, sizeof(vendorName), vendorName, &returned_size);
-    err|= clGetDeviceInfo(computeDeviceId, CL_DEVICE_NAME, sizeof(deviceName), deviceName, &returned_size);
+    err = clGetDeviceInfo(computeDeviceId, CL_DEVICE_VENDOR, sizeof(vendorName), vendorName, &returnedSize);
+    err|= clGetDeviceInfo(computeDeviceId, CL_DEVICE_NAME, sizeof(deviceName), deviceName, &returnedSize);
     if (err != CL_SUCCESS)
     {
         logError("Error: Failed to retrieve device info!", getError(err));
@@ -273,6 +275,8 @@ bool CLContextWrapper::createContext(DeviceType deviceType)
     _this->deviceId = computeDeviceId;
     _this->context = context;
     _this->commandQueue = commandQueue;
+
+    _this->maxWorkGroupSize = maxWorkGroupSize;
 
     std::cout << "Successfully created OpenCL context " << std::endl;
 
@@ -316,6 +320,15 @@ bool CLContextWrapper::createContextWithOpengl()
 
     cl_context context = clCreateContext(properties, 0, &computeDeviceId, nullptr, 0, &err);
 
+    size_t returnedSize = 0;
+    size_t maxWorkGroupSize = 0;
+    err = clGetDeviceInfo(computeDeviceId, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &maxWorkGroupSize, &returnedSize);
+    if (err != CL_SUCCESS)
+    {
+        logError("Error: Failed to retrieve device info!", getError(err));
+        return false;
+    }
+
     if(err)
     {
         logError("Error creating OpenCL shared with with shared Opengl", getError(err));
@@ -333,6 +346,7 @@ bool CLContextWrapper::createContextWithOpengl()
     _this->context = context;
     _this->deviceId = computeDeviceId;
     _this->commandQueue = commandQueue;
+    _this->maxWorkGroupSize = maxWorkGroupSize;
 
     _hasCreatedContext = true;
     _deviceType = DeviceType::GPU_DEVICE;
@@ -429,6 +443,11 @@ DeviceType CLContextWrapper::getContextDeviceType() const
     return _deviceType;
 }
 
+size_t CLContextWrapper::getMaxWorkGroupSize() const
+{
+    return _this->maxWorkGroupSize;
+}
+
 bool CLContextWrapper::createProgramFromSource(const std::string & source)
 {
     cl_int err = 0;
@@ -509,7 +528,7 @@ KernelId CLContextWrapper::prepareKernel(const std::string & kernelName)
     KernelInfo info;
     info.kernel = newKernel;
     info.workGroupSize = wgSize;
-    info.workGroupSize = lmemSize;
+    info.localMemSize = lmemSize;
 
     _this->kernels[kernelName] = info;
 
@@ -521,7 +540,7 @@ KernelId CLContextWrapper::prepareKernel(const std::string & kernelName)
    return newKernel;
 }
 
-size_t CLContextWrapper::getWorkGroupSize(const std::string & kernelName) const
+size_t CLContextWrapper::getWorkGroupSizeForKernel(const std::string & kernelName) const
 {
     auto it =_this->kernels.find(kernelName);
     if(it != _this->kernels.end())
@@ -583,7 +602,7 @@ bool CLContextWrapper::dispatchKernel(const std::string& kernelName, NDRange ran
         logError("Error: Failed to dispatch kernel", getError(err));
         return false;
     }
-    std::cout << "Successfully dispatched kernel \"" << kernelName <<"\"" << std::endl;
+//    std::cout << "Successfully dispatched kernel \"" << kernelName <<"\"" << std::endl;
     return true;
 }
 

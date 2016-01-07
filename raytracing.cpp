@@ -5,7 +5,6 @@
 #include <QTextStream>
 #include <timer.h>
 
-#include <CL/opencl.h>
 
 RayTracing::RayTracing(dwg::Scene scene, unsigned int glTexture, int textureWidth, int textureHeight) : _textureWidth(textureWidth), _textureHeight(textureHeight)
 {
@@ -16,6 +15,7 @@ RayTracing::RayTracing(dwg::Scene scene, unsigned int glTexture, int textureWidt
     if(_clContext->createContextWithOpengl())
     {
         std::cout << "Successfully created OpenCL context with OpenGL" << std::endl;
+        std::cout << "Max work group size " << _clContext->getMaxWorkGroupSize() << std::endl;
     }
     else
     {
@@ -44,8 +44,17 @@ RayTracing::RayTracing(dwg::Scene scene, unsigned int glTexture, int textureWidt
     _planesBufferId  = _clContext->createBufferFromArray(scene.planes.size(),  &(scene.planes.data()[0]),  BufferType::READ_ONLY);
     _lightsBufferId  = _clContext->createBufferFromArray(scene.lights.size(),  &(scene.lights.data()[0]),  BufferType::READ_ONLY);
 
-    _raysBufferId       = _clContext->createBuffer(4*2*sizeof(float) * _textureWidth*_textureHeight, nullptr, BufferType::READ_AND_WRITE);
-    _pixelsBufferId     = _clContext->createBuffer(  2*sizeof(int)   * _textureWidth*_textureHeight, nullptr, BufferType::READ_AND_WRITE);
+    // (2 position + 2 rays) * 4 vector components of float for each texture pixel
+    _raysBufferId1       = _clContext->createBuffer(4*4*sizeof(float) * _textureWidth*_textureHeight, nullptr, BufferType::READ_AND_WRITE);
+    _raysBufferId2       = _clContext->createBuffer(4*4*sizeof(float) * _textureWidth*_textureHeight, nullptr, BufferType::READ_AND_WRITE);
+
+    // x and y component for each texture pixel
+    _pixelsBufferId1     = _clContext->createBuffer(  2*sizeof(int)   * _textureWidth*_textureHeight, nullptr, BufferType::READ_AND_WRITE);
+    _pixelsBufferId2     = _clContext->createBuffer(  2*sizeof(int)   * _textureWidth*_textureHeight, nullptr, BufferType::READ_AND_WRITE);
+
+    // How many (int) pending rays for each texture pixel
+    _raysCount           = _clContext->createBuffer(    sizeof(int)   * _textureWidth*_textureHeight, nullptr, BufferType::READ_AND_WRITE);
+
     _tempColorsBufferId = _clContext->createBuffer(  4*sizeof(float) * _textureWidth*_textureHeight, nullptr, BufferType::READ_AND_WRITE);
 
     // Prepare program
@@ -61,13 +70,12 @@ RayTracing::RayTracing(dwg::Scene scene, unsigned int glTexture, int textureWidt
 
     _clContext->createProgramFromSource(clSource.toStdString());
 
-
     _clContext->prepareKernel("primaryRayTracingKernel");
     _clContext->prepareKernel("drawToTextureKernel");
     _clContext->prepareKernel("prefixSumKernel");
-
 }
 
+void testScan(CLContextWrapper * _clContext);
 
 void RayTracing::update()
 {
@@ -83,22 +91,25 @@ void RayTracing::update()
     size_t localTempSize = sizeof(float)*16*localSizeX*localSizeY;
     size_t localLightSize = sizeof(float)*8*_numLights;
 
-
+    int iterations = 6;
 
     _clContext->dispatchKernel("primaryRayTracingKernel", range, {&_tempColorsBufferId,
                                                     &_spheresBufferId, &_numSpheres,
                                                     &_planesBufferId, &_numPlanes,
                                                     &_lightsBufferId, &_numLights,
+                                                    &_raysBufferId1, &_raysCount, &_pixelsBufferId1,
                                                     KernelArg::getShared(localTempSize),
                                                     KernelArg::getShared(localLightSize),
+                                                    &iterations,
                                                     &_eye.x, &_eye.y, &_eye.z});
 
 
+
+//    testScan();
     _clContext->executeSafeAndSyncronized(&_sharedTextureBufferId, 1, [=] () mutable
     {
         _clContext->dispatchKernel("drawToTextureKernel", range, {&_sharedTextureBufferId,
                                                                   &_tempColorsBufferId});
-
     });
 }
 
@@ -112,10 +123,24 @@ glm::vec3 RayTracing::getEye() const
     return _eye;
 }
 
+void RayTracing::_compactRays(BufferId raysBufferId, int count)
+{
+    const int maxWorkGroup = _clContext->getWorkGroupSizeForKernel("prefixSumKernel");
+    const int groupSize = maxWorkGroup / 2;
 
-//void testScan()
+    if(count % groupSize == 0)
+    {
+
+    }
+    else
+    {
+
+    }
+}
+
+//void RayTracing::testScan()
 //{
-//    bool PRINT_RESULT = false;
+//    bool PRINT_RESULT = true;
 //    int localSize = 256;
 //    int globalSize = 1 * localSize;
 //    int totalSize = 2 * globalSize;
@@ -135,13 +160,15 @@ glm::vec3 RayTracing::getEye() const
 //        input.push_back(1);
 //    }
 
-//    auto bufferInput  = _clContext->createBuffer(input.size(), input.data(), BufferType::READ_ONLY);
-//    auto bufferOutput = _clContext->createBufferWithBytes(totalSize*sizeof(int), nullptr, BufferType::READ_AND_WRITE);
+//    auto bufferInput  = _clContext->createBufferFromArray(input.size(), input.data(), BufferType::READ_ONLY);
+//    auto bufferOutput = _clContext->createBuffer(totalSize*sizeof(int), nullptr, BufferType::READ_AND_WRITE);
+//    auto prefixes = _clContext->createBuffer(totalSize*sizeof(int), nullptr, BufferType::READ_AND_WRITE);
 
 
 //    util::Timer t;
 //    _clContext->dispatchKernel("prefixSumKernel", range, {&bufferInput,
 //                                                          &bufferOutput,
+//                                                          &prefixes,
 //                                                          KernelArg::getShared(sizeof(VectorType) * 2 * localSize),
 //                                                          &localSize});
 //    _clContext->finish();

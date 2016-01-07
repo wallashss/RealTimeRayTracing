@@ -35,19 +35,21 @@ std::vector<dwg::Sphere> getDefaultSceneSpheres()
     // Transparent
     s.position = glm::vec3(-5,-3,5.0f);
     s.radius = 2.0f;
-    s.color = glm::vec4(1, 1, 1, 0.0f);
+    s.color = glm::vec4(1, 1, 1, -0.9f);
+//    s.color = glm::vec4(1, 1, 1, 0.0f);
     spheres.push_back(s);
 
     // Yellow
-    s.position = glm::vec3(-1,-3.3,1.0f);
+    s.position = glm::vec3(-1, -3.3, 1.0f);
     s.radius = 1.7f;
     s.color = glm::vec4(1, 1, 0, -1.4f);
+//    s.color = glm::vec4(1, 1, 0, 0.0f);
     spheres.push_back(s);
 
     // Red
-    s.position = glm::vec3(1,-3,5.0f);
+    s.position = glm::vec3(1,-3, 5.0f);
     s.radius = 2.0f;
-    s.color = glm::vec4(1, 0, 0, 1.2f);
+    s.color = glm::vec4(1, 0, 0, 0.0f);
     spheres.push_back(s);
 
     return spheres;

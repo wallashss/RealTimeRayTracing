@@ -26,7 +26,7 @@
 
 __constant float MINIMUM_INTERSECT_DISTANCE = 1e-7f;
 
-__constant float BIAS_OFFSET = 1.0f;
+__constant float BIAS_OFFSET = 1e-3f;
 
 static void swap(float * a, float * b)
 {
@@ -228,13 +228,11 @@ static float4 traceRay(float3 eye,
                        int numLights,
                        __local float * temp,
                        __local float * temp2,
-                       float3 * reflectedRay,
-                       float3 * refractedRay,
-                       float * R,
-                       float * T,
+                       float3 * newRay,
                        float3 * touchPos,
                        int    * lastSphereIdx,
-                       int    * lastPlaneIdx)
+                       int    * lastPlaneIdx,
+                       int    * isRefraction)
 {
     float4 outColor = (float4)(0.0f,0.0f,0.0f,1.0f);
     bool hasHit = false;
@@ -244,33 +242,8 @@ static float4 traceRay(float3 eye,
     float3 touchPoint;
     float4 objectColor;
 
-    // Local index to load local memory
-    int x = get_local_id(0);
-    int y = get_local_id(1);
-    int localIdx = x * get_local_size(1) + y;
-
-
-    // Load scene data to local memory
 
     int sphereOffset = numSpheres % 2 == 0 ? (numSpheres/2) : ((numSpheres+1)/2 );
-    if(localIdx < numSpheres)
-    {
-        float8 tempSphere = vload8(localIdx, spheres);
-        vstore8(tempSphere, localIdx, temp);
-    }
-    else if( localIdx  > numSpheres && localIdx < (sphereOffset*2+numPlanes))
-    {
-        float16 tempPlane = vload16(localIdx - sphereOffset* 2, planes);
-        vstore16(tempPlane, localIdx - sphereOffset, temp);
-    }
-    if(localIdx < numLights)
-    {
-        float8 tempLight = vload8(localIdx, lights);
-        vstore8(tempLight, localIdx, temp2);
-    }
-    barrier(CLK_LOCAL_MEM_FENCE); // wait for loading data
-
-
     // Check for planes intersection
     int currentPlaneIdx = -1;
     for(int i = 0 ; i < numPlanes ; i++)
@@ -279,10 +252,6 @@ static float4 traceRay(float3 eye,
         {
             break;
         }
-//        if(*lastPlaneIdx == i)
-//        {
-//            continue;
-//        }
 
         float16 plane = vload16(i+sphereOffset, temp);
         if(hasInterceptedPlane(plane.lo, ray, eye, &touchPoint))
@@ -327,10 +296,10 @@ static float4 traceRay(float3 eye,
         {
             break;
         }
-//        if((*lastSphereIdx) == i)
-//        {
-//            continue;
-//        }
+        if((*lastSphereIdx) == i)
+        {
+            continue;
+        }
         float8 sphere = vload8(i, temp);
 
         if(hasInterceptedSphere(sphere, ray, eye, &touchPoint))
@@ -362,38 +331,38 @@ static float4 traceRay(float3 eye,
     if(hasHit)
     {
 // TODO Reflection and refraction
-//        if(isgreater(objectColor.w, 0.0f))
-//        {
-//            *reflectedRay = reflect(ray, normal);
-//            *touchPos = closestPoint;
-//        }
-//        else if(isless(objectColor.w, 0.0f))
-//        {
+        if(isgreater(objectColor.w, 0.0f))
+        {
+            float3 reflectionDir = reflect(ray, normal);
+            *newRay = reflectionDir;
+            *touchPos = closestPoint + reflectionDir * BIAS_OFFSET;
+        }
+        else if(isless(objectColor.w, 0.0f))
+        {
 
-//            float n1 = 1.0f; // Air...
-//            float n2 = -objectColor.w;
+            float n1 = 1.0f; // Air...
+            float n2 = -objectColor.w;
 
-//            *R = schlickApproximation(n1, n2, ray, normal);
-//            *T = 1.0f-*R;
+            float R = schlickApproximation(n1, n2, ray, normal);
+            float T = 1.0f-R;
 
-//            *reflectedRay = reflect(ray, normal);
-//            *refractedRay = refract(ray, normal, n1/n2);
+            if(R > T)
+            {
+                *newRay = reflect(ray, normal);
+            }
+            else
+            {
+                *newRay = refract(ray, normal, n1/n2);
+            }
+            *isRefraction = 1;
+            *touchPos = closestPoint + (*newRay) * BIAS_OFFSET;
 
-////            float3 oppositeSideOrigin = touchPoint + 10000.0f * transmissedRay;
-////            float3 oppositeTouchPoint;
-
-////            float3 transmissionColor = traceRay(oppositeTouchPoint, normalize(transmissedRay), n-1, closestDrawable);
-
-////            float3 reflexionColor = traceRay(closestPoint,glm::normalize(reflectedRay), n-1,closestDrawable);
-
-////            return  ((R*reflexionColor)+(T*transmissionColor))*newColor;
-
-//        }
-//        else
-//        {
-//            *reflectedRay = float3(0, 0, 0);
-//            *touchPos = closestPoint;
-//        }
+        }
+        else
+        {
+            *newRay = float3(0.0f);
+            *touchPos = closestPoint;
+        }
 
         // Calculate illumination for all spheres
         for(int i = 0 ; i < numLights; i++)
@@ -463,6 +432,7 @@ __kernel void prefixSumKernel(__global const int * input,
 
     temp[lai+bankOffsetA] = input[gai];
     temp[lbi+bankOffsetB] = input[gbi];
+
 
     // build sum in place up the tree
     for (int d = n>>1; d > 0; d >>= 1)
@@ -534,8 +504,12 @@ __kernel void primaryRayTracingKernel( __global float * texture,
                                        const int numPlanes,
                                        __global const float * lights,
                                        const int numLights,
+                                       __global float * pendingRays,
+                                       __global int   * pendingRaysCount,
+                                       __global int   * pendingPixels,
                                        __local float * temp,
                                        __local float * temp2,
+                                       int iterations,
                                        const float eyeX, const float eyeY, const float eyeZ)
 {
     // Ray Setup
@@ -544,6 +518,8 @@ __kernel void primaryRayTracingKernel( __global float * texture,
 
     const int width = get_global_size(0);
     const int height = get_global_size(1);
+
+    const int idx = x * height + y;
 
     const float3 eye    = (float3)(eyeX, eyeY, eyeZ);
     const float3 center = (float3)(0, 0.0f, 0);
@@ -558,16 +534,87 @@ __kernel void primaryRayTracingKernel( __global float * texture,
     const float3 ray = normalize(pixelPos - origin) ;
 
     // Raytracing!
-    float3 newRay = (float3)(0, 0, 0);
-    float3 newRefracted = (float3)(0, 0, 0);
-    float3 touchPos = (float3)(0, 0, 0);
+    float3 newRay = (float3)(0.0f);
+    float3 newRefracted = (float3)(0.0f);
+    float3 touchPos = (float3)(0.0f);
 
     int currentSphereIdx = -1;
     int currentPlaneIdx  = -1;
 
-    float R = 0, T = 0;
+    // Local index to load local memory
+    int lx = get_local_id(0);
+    int ly = get_local_id(1);
+    int localIdx = lx * get_local_size(1) + ly;
 
-    float4 color = traceRay(eye, ray, spheres, numSpheres, planes, numPlanes, lights, numLights, temp, temp2, &newRay, &newRefracted, &R, &T, &touchPos, &currentSphereIdx, &currentPlaneIdx);
+    // Load scene data to local memory
+    int sphereOffset = numSpheres % 2 == 0 ? (numSpheres/2) : ((numSpheres+1)/2 );
+    if(localIdx < numSpheres)
+    {
+        float8 tempSphere = vload8(localIdx, spheres);
+        vstore8(tempSphere, localIdx, temp);
+    }
+    else if( localIdx  > numSpheres && localIdx < (sphereOffset*2+numPlanes))
+    {
+        float16 tempPlane = vload16(localIdx - sphereOffset* 2, planes);
+        vstore16(tempPlane, localIdx - sphereOffset, temp);
+    }
+    if(localIdx < numLights)
+    {
+        float8 tempLight = vload8(localIdx, lights);
+        vstore8(tempLight, localIdx, temp2);
+    }
+    barrier(CLK_LOCAL_MEM_FENCE); // wait for loading data
+
+    int isRefraction = 0;
+
+    float4 color = traceRay(eye,
+                            ray,
+                            spheres,
+                            numSpheres,
+                            planes,
+                            numPlanes,
+                            lights,
+                            numLights,
+                            temp,
+                            temp2,
+                            &newRay,
+                            &touchPos,
+                            &currentSphereIdx,
+                            &currentPlaneIdx,
+                            &isRefraction);
+
+
+       for(int i = 0 ; i < iterations; i++)
+       {
+            if(!isequal(fast_length(newRay), 0.0f))
+            {
+                int anotherRefraction = 0;
+                float4 newColor = traceRay(touchPos,
+                                        newRay,
+                                        spheres,
+                                        numSpheres,
+                                        planes,
+                                        numPlanes,
+                                        lights,
+                                        numLights,
+                                        temp,
+                                        temp2,
+                                        &newRay,
+                                        &touchPos,
+                                        &currentSphereIdx,
+                                        &currentPlaneIdx,
+                                        &anotherRefraction);
+                if(isRefraction)
+                {
+                    color = newColor * color;
+                }
+                else
+                {
+                    color = (newColor + color)/2.0f;
+                }
+                isRefraction = anotherRefraction;
+            }
+       }
 
     // Gamma correction
     float3 gamma = (float3)(1.0f/2.2f, 1.0f/2.2f, 1.0f/2.2f);
@@ -579,27 +626,3 @@ __kernel void primaryRayTracingKernel( __global float * texture,
     vstore4(color, x * get_global_size(1) + (height-y), texture);
 }
 
-__kernel void compactRays(__global const float * inputRays,
-                          __global const float * outputRays,
-                          __global const int   * inputRaysPixelsPos,
-                          __global const int   * outputRaysPixelsPos,
-                          __global const int   * raysPrefixes,
-                          __global const int   * numRays)
-{
-
-}
-
-//__kernel void rayTracingKernel(__global float * texture,
-//                               __global const float * spheres,
-//                               const int numSpheres,
-//                               __global const float * planes,
-//                               const int numPlanes,
-//                               __global const float * lights,
-//                               const int numLights,
-//                               __global float * rays,
-//                               __local float * temp,
-//                               __local float * temp2,
-//                               const float eyeX, const float eyeY, const float eyeZ)
-//{
-
-//}

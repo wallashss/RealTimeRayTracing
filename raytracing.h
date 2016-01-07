@@ -18,6 +18,14 @@ public:
 
 private:
 
+    void _compactRays(BufferId rays, int count);
+
+    void _prefixSum(BufferId input, BufferId output, int n);
+
+    void testScan();
+
+private:
+
     // Shared OpenGL texture
     unsigned int _glTexture;
     BufferId _sharedTextureBufferId;
@@ -36,8 +44,11 @@ private:
 
     // Temp buffers
     BufferId _tempColorsBufferId;
-    BufferId _raysBufferId;
-    BufferId _pixelsBufferId;
+    BufferId _raysBufferId1;
+    BufferId _raysBufferId2;
+    BufferId _pixelsBufferId1;
+    BufferId _pixelsBufferId2;
+    BufferId _raysCount;
 
     glm::vec3 _eye;
 
