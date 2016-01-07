@@ -10,7 +10,6 @@
 #include <QTextStream>
 
 #include <iostream>
-#include <timer.h>
 
 #include <glm/gtx/rotate_vector.hpp>
 
@@ -45,7 +44,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Timer for rotation update
     _qtimer = new QTimer(this);
-    _qtimer->setInterval(16); // max 60 FPS
+    _qtimer->setInterval(0); // max 60 FPS
     QObject::connect(_qtimer, &QTimer::timeout, [&]
     {
         _raytracer->setEye(glm::rotateY(_raytracer->getEye(), glm::pi<float>()*0.01f));
@@ -66,6 +65,7 @@ MainWindow::MainWindow(QWidget *parent)
     {
         if(!_qtimer->isActive())
         {
+            _updateTimer.restart();
             _qtimer->start();
         }
         else

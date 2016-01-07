@@ -55,7 +55,7 @@ RayTracing::RayTracing(dwg::Scene scene, unsigned int glTexture, int textureWidt
     // How many (int) pending rays for each texture pixel
     _raysCount           = _clContext->createBuffer(    sizeof(int)   * _textureWidth*_textureHeight, nullptr, BufferType::READ_AND_WRITE);
 
-    _tempColorsBufferId = _clContext->createBuffer(  4*sizeof(float) * _textureWidth*_textureHeight, nullptr, BufferType::READ_AND_WRITE);
+    _tempColorsBufferId  = _clContext->createBuffer(  4*sizeof(float) * _textureWidth*_textureHeight, nullptr, BufferType::READ_AND_WRITE);
 
     // Prepare program
     QFile kernelSourceFile(":/cl_files/raytracing.cl");
@@ -88,10 +88,12 @@ void RayTracing::update()
     range.localSize[0] = localSizeX;
     range.localSize[1] = localSizeY;
 
+    int iterations = 10;
+
+
     size_t localTempSize = sizeof(float)*16*localSizeX*localSizeY;
     size_t localLightSize = sizeof(float)*8*_numLights;
 
-    int iterations = 6;
 
     _clContext->dispatchKernel("primaryRayTracingKernel", range, {&_tempColorsBufferId,
                                                     &_spheresBufferId, &_numSpheres,

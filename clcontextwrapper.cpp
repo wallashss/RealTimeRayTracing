@@ -89,6 +89,8 @@ static std::string getError(cl_int error)
         return "Invalid Host Pointer";
     case CL_MEM_OBJECT_ALLOCATION_FAILURE:
         return "Failure to allocate memory for object";
+    case CL_OUT_OF_RESOURCES:
+        return "Out of resources";
     case CL_OUT_OF_HOST_MEMORY:
         return "Out of host memory";
     case CL_INVALID_PROGRAM_EXECUTABLE:
@@ -407,6 +409,15 @@ bool CLContextWrapper::createContextWithOpengl()
     // Create a context with device in the CGL share group
     cl_context context = clCreateContext(properties, 1, &computeDeviceId, nullptr, 0, &err);
 
+    size_t returnedSize = 0;
+    size_t maxWorkGroupSize = 0;
+    err = clGetDeviceInfo(computeDeviceId, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &maxWorkGroupSize, &returnedSize);
+    if (err != CL_SUCCESS)
+    {
+        logError("Error: Failed to retrieve device info!", getError(err));
+        return false;
+    }
+
     if(err)
     {
         logError("Error creating OpenCL shared with with shared Opengl", getError(err));
@@ -424,6 +435,7 @@ bool CLContextWrapper::createContextWithOpengl()
     _this->deviceId = computeDeviceId;
     _this->context = context;
     _this->commandQueue = commandQueue;
+    _this->maxWorkGroupSize = maxWorkGroupSize;
 
     _hasCreatedContext = true;
     _deviceType = DeviceType::GPU_DEVICE;

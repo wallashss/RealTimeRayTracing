@@ -110,7 +110,7 @@ std::vector<dwg::Plane> getDefaultScenePlanes()
     planes.push_back(p);
 
     // Front
-    p.position = glm::vec3(0,0,-10);
+    p.position = glm::vec3(0,0,-15);
     p.tileSize  = 0.0f;
     p.normal = glm::vec3(0,0,-1);
     p.color1 = glm::vec4(.7f,0.7f,0.7f, 1.2f);

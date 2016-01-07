@@ -231,8 +231,7 @@ static float4 traceRay(float3 eye,
                        float3 * newRay,
                        float3 * touchPos,
                        int    * lastSphereIdx,
-                       int    * lastPlaneIdx,
-                       int    * isRefraction)
+                       int    * lastPlaneIdx)
 {
     float4 outColor = (float4)(0.0f,0.0f,0.0f,1.0f);
     bool hasHit = false;
@@ -339,14 +338,13 @@ static float4 traceRay(float3 eye,
         }
         else if(isless(objectColor.w, 0.0f))
         {
-
             float n1 = 1.0f; // Air...
             float n2 = -objectColor.w;
 
             float R = schlickApproximation(n1, n2, ray, normal);
             float T = 1.0f-R;
 
-            if(R > T)
+            if(R > T) // Coarse horrible aproximation to simplif
             {
                 *newRay = reflect(ray, normal);
             }
@@ -354,13 +352,11 @@ static float4 traceRay(float3 eye,
             {
                 *newRay = refract(ray, normal, n1/n2);
             }
-            *isRefraction = 1;
             *touchPos = closestPoint + (*newRay) * BIAS_OFFSET;
-
         }
         else
         {
-            *newRay = float3(0.0f);
+            *newRay = (float3)(0.0f);
             *touchPos = closestPoint;
         }
 
@@ -399,6 +395,7 @@ static float4 traceRay(float3 eye,
                 float3 viewDir = eye - closestPoint;
                 float4 phongColor = phong(viewDir, closestPoint, normal, objectColor, light.lo.xyz, lightColor);
                 outColor += phongColor;
+                outColor.w = objectColor.w;
             }
         }
     }
@@ -495,6 +492,18 @@ __kernel void drawToTextureKernel(__write_only image2d_t glTexture,
     write_imagef(glTexture, (int2)(x, y), color);
 }
 
+float4 blendColor(float4 a, float4 b)
+{
+    if(isgreater(a.w, 0.0f))
+    {
+        return (a + b) /2.0f;
+    }
+    else
+    {
+        return a * b;
+    }
+}
+
 
 // This is the first kernel, when we generate the primary rays
 __kernel void primaryRayTracingKernel( __global float * texture,
@@ -518,8 +527,6 @@ __kernel void primaryRayTracingKernel( __global float * texture,
 
     const int width = get_global_size(0);
     const int height = get_global_size(1);
-
-    const int idx = x * height + y;
 
     const float3 eye    = (float3)(eyeX, eyeY, eyeZ);
     const float3 center = (float3)(0, 0.0f, 0);
@@ -565,8 +572,7 @@ __kernel void primaryRayTracingKernel( __global float * texture,
     }
     barrier(CLK_LOCAL_MEM_FENCE); // wait for loading data
 
-    int isRefraction = 0;
-
+    float16 colorStack;
     float4 color = traceRay(eye,
                             ray,
                             spheres,
@@ -580,41 +586,82 @@ __kernel void primaryRayTracingKernel( __global float * texture,
                             &newRay,
                             &touchPos,
                             &currentSphereIdx,
-                            &currentPlaneIdx,
-                            &isRefraction);
+                            &currentPlaneIdx);
 
+    int stackSize = 0;
 
-       for(int i = 0 ; i < iterations; i++)
-       {
-            if(!isequal(fast_length(newRay), 0.0f))
+    float4 newColor = color;
+    for(int i = 0 ; i < iterations; i++)
+    {
+        if(!isequal(fast_length(newRay), 0.0f))
+        {
+            newColor = traceRay(touchPos,
+                                    newRay,
+                                    spheres,
+                                    numSpheres,
+                                    planes,
+                                    numPlanes,
+                                    lights,
+                                    numLights,
+                                    temp,
+                                    temp2,
+                                    &newRay,
+                                    &touchPos,
+                                    &currentSphereIdx,
+                                    &currentPlaneIdx);
+            switch(stackSize)
             {
-                int anotherRefraction = 0;
-                float4 newColor = traceRay(touchPos,
-                                        newRay,
-                                        spheres,
-                                        numSpheres,
-                                        planes,
-                                        numPlanes,
-                                        lights,
-                                        numLights,
-                                        temp,
-                                        temp2,
-                                        &newRay,
-                                        &touchPos,
-                                        &currentSphereIdx,
-                                        &currentPlaneIdx,
-                                        &anotherRefraction);
-                if(isRefraction)
-                {
-                    color = newColor * color;
-                }
-                else
-                {
-                    color = (newColor + color)/2.0f;
-                }
-                isRefraction = anotherRefraction;
+            case 0:
+                colorStack.lo.lo = newColor;
+                stackSize++;
+                break;
+            case 1:
+                colorStack.lo.hi = newColor;
+                stackSize++;
+                break;
+            case 2:
+                colorStack.hi.lo = newColor;
+                stackSize++;
+                break;
+            case 3:
+                colorStack.hi.hi = newColor;
+                stackSize++;
+                break;
+            default:
+                colorStack.hi.hi = newColor * colorStack.hi.hi;
+                break;
             }
-       }
+
+        }
+    }
+    newColor = color;
+
+    // Now calculate color based on stack of colors
+    if(stackSize > 4)
+    {
+        newColor = blendColor(colorStack.hi.lo, colorStack.hi.hi);
+        newColor = blendColor(colorStack.lo.hi, newColor);
+        newColor = blendColor(colorStack.lo.lo, newColor);
+        newColor = blendColor(color, newColor);
+    }
+    else if(stackSize > 3)
+    {
+        newColor = blendColor(colorStack.lo.hi, colorStack.hi.lo);
+        newColor = blendColor(colorStack.lo.lo, newColor);
+        newColor = blendColor(color, newColor);
+    }
+    else if(stackSize > 1)
+    {
+        newColor = blendColor(colorStack.lo.lo, colorStack.lo.hi);
+        newColor = blendColor(color, newColor);
+    }
+    else if(stackSize > 0)
+    {
+        newColor = blendColor(newColor, colorStack.lo.lo);
+    }
+
+    color = newColor;
+
 
     // Gamma correction
     float3 gamma = (float3)(1.0f/2.2f, 1.0f/2.2f, 1.0f/2.2f);

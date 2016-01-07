@@ -14,6 +14,9 @@
 
 #include <QTimer>
 
+#include <timer.h>
+
+
 class MainWindow : public QWidget
 {
     Q_OBJECT
@@ -31,6 +34,7 @@ private:
 
     std::shared_ptr<RayTracing> _raytracer;
 
+    util::Timer _updateTimer;
     QPointer<GLView> _glView;
     QPointer<QTimer> _qtimer;
 };
