@@ -13,18 +13,17 @@
 
 #include <glm/gtx/rotate_vector.hpp>
 
-static const int textureWidth = 640;
-static const int textureHeight = 480;
+static const int textureWidth = 800;
+static const int textureHeight = 592;
 
-static const glm::vec3 ORIGINAL_EYE(0,0,-40);
+static const glm::vec3 ORIGINAL_EYE(0,0,-20);
+
+static const float ROTATION_SPEED = 0.05f;
 
 
 MainWindow::MainWindow(QWidget *parent)
-    : QWidget(parent)//, _eye(ORIGINAL_EYE)
+    : QWidget(parent)
 {
-    setMinimumSize(1024, 768);
-
-    QHBoxLayout * hlayout = new QHBoxLayout();
 
     // Initialize OpenGL View
     _glView = new GLView(textureWidth, textureHeight, [=] (GLView * newGlView) mutable
@@ -47,7 +46,9 @@ MainWindow::MainWindow(QWidget *parent)
     _qtimer->setInterval(0); // max 60 FPS
     QObject::connect(_qtimer, &QTimer::timeout, [&]
     {
-        _raytracer->setEye(glm::rotateY(_raytracer->getEye(), glm::pi<float>()*0.01f));
+        float deltaTime = _updateTimer.elapsedSec();
+        _updateTimer.restart();
+        _raytracer->setEye(glm::rotateY(_raytracer->getEye(), glm::pi<float>()*ROTATION_SPEED*deltaTime));
         _updateScene();
     });
 
@@ -75,11 +76,16 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // Populate view
-    hlayout->addWidget(_glView);
-    hlayout->addWidget(drawButton);
-    hlayout->addWidget(rotateButton);
+    QVBoxLayout * vlayout = new QVBoxLayout();
 
-    setLayout(hlayout);
+    vlayout->addWidget(_glView);
+
+    QHBoxLayout * hLayout = new QHBoxLayout();
+    hLayout->addWidget(drawButton);
+    hLayout->addWidget(rotateButton);
+
+    vlayout->addLayout(hLayout);
+    setLayout(vlayout);
 }
 
 void MainWindow::_updateScene()

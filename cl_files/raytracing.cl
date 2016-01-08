@@ -1,29 +1,3 @@
-
-
-// This defines are hardcode, we will inject this defines in runtime before build the program.
-#define NUM_BANKS 32
-#define LOG_NUM_BANKS 5
-
-#ifdef NUM_BANKS
-#ifdef LOG_NUM_BANKS
-
-#define CONFLICT_FREE (1)
-
-#endif
-#endif
-
-#if (CONFLICT_FREE)
-
-#define BANK_OFFSET(index) \
-    (index >> NUM_BANKS + index >> (2*LOG_NUM_BANKS))
-
-#else
-
-#define BANK_OFFSET(index) (0)
-
-#endif
-
-
 __constant float MINIMUM_INTERSECT_DISTANCE = 1e-7f;
 
 __constant float BIAS_OFFSET = 1e-3f;
@@ -95,6 +69,7 @@ static float3 getNormalFromPlane(float8 plane)
     return plane.hi.xyz;
 }
 
+// Reference: http://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-plane-and-ray-disk-intersection
 static bool hasInterceptedPlane(float8 plane, float3 ray, float3 origin, float3 * touchPoint)
 {
     float3 n = plane.hi.xyz;
@@ -112,7 +87,7 @@ static bool hasInterceptedPlane(float8 plane, float3 ray, float3 origin, float3 
     return false;
 }
 
-
+// Reference: http://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-sphere-intersection
 static bool solveQuadratic(const float a, const float b, const float c, float *x0, float *x1)
 {
     float discr = b * b - 4 * a * c;
@@ -243,6 +218,7 @@ static float4 traceRay(float3 eye,
 
 
     int sphereOffset = numSpheres % 2 == 0 ? (numSpheres/2) : ((numSpheres+1)/2 );
+
     // Check for planes intersection
     int currentPlaneIdx = -1;
     for(int i = 0 ; i < numPlanes ; i++)
@@ -329,14 +305,13 @@ static float4 traceRay(float3 eye,
     // Calculate color
     if(hasHit)
     {
-// TODO Reflection and refraction
-        if(isgreater(objectColor.w, 0.0f))
+        if(isgreater(objectColor.w, 0.0f)) // Reflection
         {
             float3 reflectionDir = reflect(ray, normal);
             *newRay = reflectionDir;
             *touchPos = closestPoint + reflectionDir * BIAS_OFFSET;
         }
-        else if(isless(objectColor.w, 0.0f))
+        else if(isless(objectColor.w, 0.0f)) // Refraction
         {
             float n1 = 1.0f; // Air...
             float n2 = -objectColor.w;
@@ -344,7 +319,7 @@ static float4 traceRay(float3 eye,
             float R = schlickApproximation(n1, n2, ray, normal);
             float T = 1.0f-R;
 
-            if(R > T) // Coarse horrible aproximation to simplif
+            if(R > T) // Coarse horrible aproximation to simplify
             {
                 *newRay = reflect(ray, normal);
             }
@@ -360,7 +335,7 @@ static float4 traceRay(float3 eye,
             *touchPos = closestPoint;
         }
 
-        // Calculate illumination for all spheres
+        // Calculate illumination for all lights
         for(int i = 0 ; i < numLights; i++)
         {
             float8 light = vload8(i, temp2);
@@ -404,83 +379,6 @@ static float4 traceRay(float3 eye,
 }
 
 
-// Proccess two elements by thread
-__kernel void prefixSumKernel(__global const int * input,
-                              __global int * output,
-                              __global int * groupPrefixes,
-                              __local  int * temp,
-                              int const size)
-{
-    const int n = get_local_size(0)*2;
-
-    const int thid = get_local_id(0);
-    int offset = 1;
-
-    const int groupIdx = get_global_id(0) / get_local_size(0);
-
-    const int gai = groupIdx * n +  thid;
-    const int gbi = groupIdx * n +  thid + n/2;
-
-    const int lai = thid;
-    const int lbi = thid+n/2;
-
-    const int bankOffsetA = BANK_OFFSET(lai);
-    const int bankOffsetB = BANK_OFFSET(lbi);
-
-    temp[lai+bankOffsetA] = input[gai];
-    temp[lbi+bankOffsetB] = input[gbi];
-
-
-    // build sum in place up the tree
-    for (int d = n>>1; d > 0; d >>= 1)
-    {
-       barrier(CLK_LOCAL_MEM_FENCE);
-       if (thid < d)
-       {
-            int ai = offset*(2*thid+1)-1;
-            int bi = offset*(2*thid+2)-1;
-
-            ai += BANK_OFFSET(ai);
-            bi += BANK_OFFSET(bi);
-
-            temp[bi] += temp[ai];
-        }
-        offset *= 2;
-    }
-    barrier(CLK_LOCAL_MEM_FENCE);
-
-    // clear the last element
-    if (thid == 0)
-    {
-        groupPrefixes[groupIdx] = temp[(n - 1) + BANK_OFFSET((n-1)) ];
-        temp[(n - 1) + BANK_OFFSET((n-1)) ] = 0;
-    }
-
-    // traverse down tree & build scan
-    for (int d = 1; d < n; d *= 2)
-    {
-         offset >>= 1;
-         barrier(CLK_LOCAL_MEM_FENCE);
-         if (thid < d)
-         {
-            int ai = offset*(2*thid+1)-1;
-            int bi = offset*(2*thid+2)-1;
-
-            ai += BANK_OFFSET(ai);
-            bi += BANK_OFFSET(bi);
-
-            float t = temp[ai];
-            temp[ai] = temp[bi];
-            temp[bi] += t;
-          }
-    }
-    barrier(CLK_LOCAL_MEM_FENCE);
-
-    // write results to device memory
-    output[gai] = temp[lai + bankOffsetA];
-    output[gbi] = temp[lbi + bankOffsetB];
-}
-
 __kernel void drawToTextureKernel(__write_only image2d_t glTexture,
                             __global float * texture)
 {
@@ -492,7 +390,7 @@ __kernel void drawToTextureKernel(__write_only image2d_t glTexture,
     write_imagef(glTexture, (int2)(x, y), color);
 }
 
-float4 blendColor(float4 a, float4 b)
+static float4 blendColor(float4 a, float4 b)
 {
     if(isgreater(a.w, 0.0f))
     {
@@ -506,20 +404,17 @@ float4 blendColor(float4 a, float4 b)
 
 
 // This is the first kernel, when we generate the primary rays
-__kernel void primaryRayTracingKernel( __global float * texture,
-                                       __global const float * spheres,
-                                       const int numSpheres,
-                                       __global const float * planes,
-                                       const int numPlanes,
-                                       __global const float * lights,
-                                       const int numLights,
-                                       __global float * pendingRays,
-                                       __global int   * pendingRaysCount,
-                                       __global int   * pendingPixels,
-                                       __local float * temp,
-                                       __local float * temp2,
-                                       int iterations,
-                                       const float eyeX, const float eyeY, const float eyeZ)
+__kernel void rayTracingKernel(__global float * texture,
+                               __global const float * spheres,
+                               const int numSpheres,
+                               __global const float * planes,
+                               const int numPlanes,
+                               __global const float * lights,
+                               const int numLights,
+                               __local float * temp,
+                               __local float * temp2,
+                               int iterations,
+                               const float eyeX, const float eyeY, const float eyeZ)
 {
     // Ray Setup
     const int x = get_global_id(0);
@@ -542,7 +437,6 @@ __kernel void primaryRayTracingKernel( __global float * texture,
 
     // Raytracing!
     float3 newRay = (float3)(0.0f);
-    float3 newRefracted = (float3)(0.0f);
     float3 touchPos = (float3)(0.0f);
 
     int currentSphereIdx = -1;
@@ -572,7 +466,11 @@ __kernel void primaryRayTracingKernel( __global float * texture,
     }
     barrier(CLK_LOCAL_MEM_FENCE); // wait for loading data
 
+
+    // This is very
     float16 colorStack;
+
+
     float4 color = traceRay(eye,
                             ray,
                             spheres,

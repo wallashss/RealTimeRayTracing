@@ -42,13 +42,8 @@ private:
     BufferId _lightsBufferId;
     int _numLights;
 
-    // Temp buffers
+    // Temp buffer
     BufferId _tempColorsBufferId;
-    BufferId _raysBufferId1;
-    BufferId _raysBufferId2;
-    BufferId _pixelsBufferId1;
-    BufferId _pixelsBufferId2;
-    BufferId _raysCount;
 
     glm::vec3 _eye;
 
