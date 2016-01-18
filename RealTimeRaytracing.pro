@@ -5,6 +5,8 @@
 #-------------------------------------------------
 
 #Requires Qt 5.4 or above.
+
+#TODO this is messy
 QT       += core opengl
 
 CONFIG += c++11

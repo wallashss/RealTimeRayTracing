@@ -13,12 +13,12 @@
 
 #include <glm/gtx/rotate_vector.hpp>
 
-static const int textureWidth = 800;
-static const int textureHeight = 592;
+static const int textureWidth = 640;
+static const int textureHeight = 480;
 
-static const glm::vec3 ORIGINAL_EYE(0,0,-20);
+static const glm::vec3 ORIGINAL_EYE(0,0,-40);
 
-static const float ROTATION_SPEED = 0.05f;
+static const float ROTATION_SPEED = 0.1f;
 
 
 MainWindow::MainWindow(QWidget *parent)
